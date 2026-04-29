@@ -2,7 +2,7 @@ name: iOS CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -40,7 +40,7 @@ jobs:
           xcodebuild build \
             -project OpenCodeRemote.xcodeproj \
             -scheme OpenCodeRemote \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
+            -destination 'platform=iOS Simulator,name=Any iOS Simulator' \
             -configuration Debug \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -60,7 +60,7 @@ jobs:
           xcodebuild test \
             -project OpenCodeRemote.xcodeproj \
             -scheme OpenCodeRemote \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
+            -destination 'platform=iOS Simulator,name=Any iOS Simulator' \
             -configuration Debug \
             -only-testing:OpenCodeRemoteTests \
             CODE_SIGN_IDENTITY="" \
