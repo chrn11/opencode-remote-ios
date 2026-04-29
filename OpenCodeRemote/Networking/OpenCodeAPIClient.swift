@@ -133,11 +133,11 @@ actor OpenCodeAPIClient {
   }
 
   /// 创建新会话
-  func createSession(title: String?, cwd: String?) async throws -> SessionDetail {
-    let body = CreateSessionRequest(title: title, cwd: cwd)
+  func createSession(title: String?) async throws -> SessionDetail {
+    let body = SessionCreateInput(parentID: nil, title: title, permission: nil, workspaceID: nil)
     let request = try makeRequest("session", method: "POST", body: body)
     let (data, response) = try await session.data(for: request)
-    try HTTPValidator.validate(response, data: data, expectedStatus: 201)
+    try HTTPValidator.validate(response, data: data, expectedStatus: 200)
     return try decoder.decode(SessionDetail.self, from: data)
   }
 
@@ -188,9 +188,11 @@ actor OpenCodeAPIClient {
   }
 
   /// 异步发送 Prompt，服务端返回 204
-  func sendPromptAsync(sessionId: String, message: String, requestId: String) async throws {
-    let body = PromptRequest(message: message, requestId: requestId, attachments: nil)
-    let request = try makeRequest("session/\(sessionId)/prompt_async", method: "POST", body: body)
+  /// 使用 parts 数组格式对齐真实 OpenCode API
+  func sendPromptAsync(sessionId: String, text: String, requestId: String) async throws {
+    let body = [["type": "text", "text": text]]
+    let request = try makeRequest("session/\(sessionId)/prompt_async", method: "POST",
+      body: CodableValue.array(body.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) }))
     let (data, response) = try await session.data(for: request)
     try HTTPValidator.validate(response, data: data, expectedStatus: 204)
   }

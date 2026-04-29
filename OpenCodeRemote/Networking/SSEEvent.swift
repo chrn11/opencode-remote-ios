@@ -26,7 +26,7 @@ enum SSEEvent: Sendable {
   case sessionUpdated(sessionID: String, info: SessionInfo)
   case sessionDeleted(sessionID: String, info: SessionInfo)
 
-  case messageUpdated(sessionID: String, info: Message)
+  case messageUpdated(sessionID: String, info: MessageInfo)
   case messageRemoved(sessionID: String, messageID: String)
   case messagePartUpdated(sessionID: String, part: MessagePart)
 
@@ -80,7 +80,7 @@ actor SSEEventParser {
 
     case "message.updated":
       guard let sid = envelope.properties?["sessionID"]?.stringValue,
-            let info = decode(Message.self, envelope.properties?["info"]) else { return nil }
+            let info = decode(MessageInfo.self, envelope.properties?["info"]) else { return nil }
       return .messageUpdated(sessionID: sid, info: info)
 
     case "message.removed":

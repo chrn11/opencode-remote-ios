@@ -96,7 +96,7 @@ final class SessionStore: ObservableObject {
     error = nil
     do {
       let requestID = UUID().uuidString
-      try await apiClient.sendPromptAsync(sessionId: sid, message: text, requestId: requestID)
+      try await apiClient.sendPromptAsync(sessionId: sid, text: text, requestId: requestID)
     } catch {
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }
@@ -184,20 +184,42 @@ final class SessionStore: ObservableObject {
 
     case .messageUpdated(let sid, let info):
       if let idx = messages.firstIndex(where: { $0.id == info.id }) {
-        messages[idx] = info
+        // 保留现有 parts，更新 info
+        messages[idx] = MessageWithParts(info: info, parts: messages[idx].parts)
       } else {
-        messages.append(info)
+        messages.append(MessageWithParts(info: info, parts: []))
       }
 
     case .messageRemoved(let sid, let msgID):
       messages.removeAll { $0.id == msgID }
 
     case .messagePartUpdated(let sid, let part):
-      // 在消息中查找对应 part 并更新
-      for i in messages.indices {
-        for j in messages[i].parts.indices {
-          // 简化比较：通过 part 类型和 ID 匹配
+      // 通过 part 中内嵌的 messageID 定位消息，update 或 append
+      let msgID: MessageID
+      let partID: PartID
+      switch part {
+      case .text(let p):    msgID = p.messageID; partID = p.id
+      case .tool(let p):    msgID = p.messageID; partID = p.id
+      case .reasoning(let p): msgID = p.messageID; partID = p.id
+      case .file(let p):    msgID = p.messageID; partID = p.id
+      case .snapshot(let p): msgID = p.messageID; partID = p.id
+      case .patch(let p):   msgID = p.messageID; partID = p.id
+      case .agent(let p):   msgID = p.messageID; partID = p.id
+      case .compaction(let p): msgID = p.messageID; partID = p.id
+      case .subtask(let p): msgID = p.messageID; partID = p.id
+      case .retry(let p):   msgID = p.messageID; partID = p.id
+      case .stepStart(let p): msgID = p.messageID; partID = p.id
+      case .stepFinish(let p): msgID = p.messageID; partID = p.id
+      case .unknown: return
+      }
+      if let idx = messages.firstIndex(where: { $0.id == msgID }) {
+        var parts = messages[idx].parts
+        if let pIdx = parts.firstIndex(where: { $0.id == partID }) {
+          parts[pIdx] = part
+        } else {
+          parts.append(part)
         }
+        messages[idx] = MessageWithParts(info: messages[idx].info, parts: parts)
       }
 
     case .permissionAsked(let perm):
