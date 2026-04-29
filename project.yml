@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.opencode
   deploymentTarget:
     iOS: "17.0"
-  xcodeVersion: "16.0"
+  xcodeVersion: "17.0"
 
 settings:
   base:

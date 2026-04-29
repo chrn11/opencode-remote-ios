@@ -2,45 +2,28 @@ name: iOS CI
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  HOMEBREW_NO_AUTO_UPDATE: 1
-  HOMEBREW_NO_INSTALL_CLEANUP: 1
-  HOMEBREW_NO_ENV_HINTS: 1
-
 jobs:
   build:
-    name: Build (iOS)
+    name: Build
     runs-on: macos-15
     timeout-minutes: 15
 
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 查看环境
-        run: |
-          xcodebuild -version
-          swift --version
+      - name: 安装 xcodegen (npm)
+        run: npm install -g xcodegen
 
-      - name: 安装 xcodegen
-        run: |
-          brew install xcodegen 2>&1 || true
-          which xcodegen || (
-            curl -fsSL https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o /tmp/xcodegen.zip
-            sudo unzip -o /tmp/xcodegen.zip -d /usr/local/bin
-            sudo chmod +x /usr/local/bin/xcodegen
-          )
-
-      - name: 生成 Xcode 项目
+      - name: 生成项目
         run: xcodegen generate
 
       - name: 编译

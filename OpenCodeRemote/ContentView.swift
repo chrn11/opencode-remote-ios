@@ -1,239 +1,436 @@
 // OpenCode Remote - 根视图路由
+// 对齐 OpenCode 源码 app.tsx + home.tsx + session.tsx
 // 创建时间：2026-04-29
 
 import SwiftUI
 
 struct ContentView: View {
-  @EnvironmentObject var connectionStore: ConnectionStore
-  @EnvironmentObject var sessionStore: SessionStore
-  @State private var input = ""
-  @State private var showingChat = false
+  @EnvironmentObject var conn: ConnectionStore
+  @EnvironmentObject var store: SessionStore
 
   var body: some View {
-    Group {
-      if connectionStore.status == .connected {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-          NavigationSplitView {
-            RootSessionListView
-          } detail: {
-            RootDetailView
-          }
-        } else {
-          NavigationStack {
-            RootSessionListView
-              .navigationDestination(isPresented: $showingChat) {
-                RootChatView
-              }
-          }
-        }
+    if conn.status == .connected {
+      if store.selectedSession != nil {
+        ChatScreen()
+          .navigationBarBackButtonHidden(false)
       } else {
-        RootConnectionView
-      }
-    }
-  }
-
-  private var RootSessionListView: some View {
-    List {
-      ForEach(sessionStore.sessions) { session in
-        Button {
-          if UIDevice.current.userInterfaceIdiom != .pad {
-            showingChat = true
-          }
-          Task { await sessionStore.selectSession(session.id) }
-        } label: {
-          RootSessionRowView(session: session)
+        NavigationStack {
+          HomeScreen()
         }
       }
-    }
-    .navigationTitle("会话")
-    .refreshable { await sessionStore.refreshSessions() }
-    .task {
-      if sessionStore.sessions.isEmpty { await sessionStore.refreshSessions() }
-    }
-    .onAppear { sessionStore.subscribeToEvents() }
-  }
-
-  @ViewBuilder
-  private var RootDetailView: some View {
-    if sessionStore.selectedSession != nil {
-      RootChatView
     } else {
-      VStack(spacing: 16) {
-        Image(systemName: "rectangle.and.hand.point.up.left")
-          .font(.system(size: 48))
-          .foregroundColor(.secondary)
-        Text("选择一个会话查看详情")
-          .foregroundColor(.secondary)
+      NavigationStack {
+        ConnectScreen()
       }
     }
   }
+}
 
-  private var RootConnectionView: some View {
-    NavigationStack {
-      VStack(spacing: 20) {
-        Image(systemName: "network")
-          .font(.system(size: 48))
-          .foregroundColor(.accentColor)
-        Text("连接到 OpenCode")
-          .font(.title2)
+// MARK: - 连接页面
 
-        TextField("服务器地址 (例如: 192.168.1.100:4096)", text: $connectionStore.serverURL)
+struct ConnectScreen: View {
+  @EnvironmentObject var conn: ConnectionStore
+  @EnvironmentObject var store: SessionStore
+
+  var body: some View {
+    VStack(spacing: 24) {
+      Spacer()
+
+      // Logo
+      Text("OpenCode")
+        .font(.system(size: 36, weight: .bold, design: .rounded))
+        .foregroundStyle(.secondary.opacity(0.3))
+
+      // 表单
+      VStack(spacing: 12) {
+        TextField("服务器地址 (192.168.1.4:4096)", text: $conn.serverURL)
           .textFieldStyle(.roundedBorder)
           .keyboardType(.URL)
-        SecureField("认证令牌", text: $connectionStore.authToken)
+          .autocapitalization(.none)
+        SecureField("密码", text: $conn.authToken)
           .textFieldStyle(.roundedBorder)
-
-        if connectionStore.status == .error, let err = connectionStore.lastError {
-          Text(err)
-            .font(.caption)
-            .foregroundColor(.red)
-        }
-
-        Button {
-          Task { _ = await connectionStore.connect() }
-        } label: {
-          if connectionStore.status == .connecting {
-            ProgressView()
-          } else {
-            Text("连接")
-              .frame(maxWidth: .infinity)
-          }
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(connectionStore.status == .connecting)
       }
-      .padding()
-      .navigationTitle("OpenCode Remote")
-    }
-  }
+      .padding(.horizontal, 32)
 
-  private var RootChatView: some View {
-    VStack(spacing: 0) {
-      ScrollViewReader { proxy in
-        ScrollView {
-          LazyVStack {
-            ForEach(sessionStore.messages) { msg in
-              RootMessageCardView(message: msg)
-            }
-          }
-          .padding()
-        }
-        .onChange(of: sessionStore.messages.count) { _, _ in
-          if let last = sessionStore.messages.last {
-            proxy.scrollTo(last.id)
-          }
-        }
-      }
-      Divider()
-      HStack {
-        TextField("输入指令...", text: $input)
-          .textFieldStyle(.roundedBorder)
-        Button {
-          let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard !text.isEmpty else { return }
-          input = ""
-          Task { await sessionStore.sendMessage(text: text) }
-        } label: {
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.title2)
-        }
-        .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-        if sessionStore.isSelectedSessionRunning {
-          Button {
-            Task { await sessionStore.abort() }
-          } label: {
-            Image(systemName: "stop.circle.fill")
-              .font(.title2)
-              .foregroundColor(.red)
-          }
-        }
-      }
-      .padding(.horizontal)
-      .padding(.vertical, 8)
-      .background(.bar)
-    }
-    .onDisappear {
-      if UIDevice.current.userInterfaceIdiom != .pad {
-        showingChat = false
-      }
-    }
-  }
-}
-
-struct RootSessionRowView: View {
-  let session: SessionInfo
-
-  var body: some View {
-    HStack {
-      VStack(alignment: .leading, spacing: 4) {
-        Text(session.title)
-          .font(.headline)
-          .lineLimit(1)
-        Text(session.directory)
+      // 错误
+      if conn.status == .error, let err = conn.lastError {
+        Text(err)
           .font(.caption)
-          .foregroundColor(.secondary)
+          .foregroundColor(.red)
+          .multilineTextAlignment(.center)
+          .padding(.horizontal, 32)
       }
+
+      // 连接按钮
+      Button {
+        Task {
+          if await conn.connect() {
+            await store.refreshSessions()
+          }
+        }
+      } label: {
+        Group {
+          if conn.status == .connecting {
+            ProgressView().tint(.white)
+          } else {
+            Text("连接").frame(maxWidth: .infinity)
+          }
+        }
+        .padding(.vertical, 10)
+      }
+      .buttonStyle(.borderedProminent)
+      .disabled(conn.status == .connecting)
+      .padding(.horizontal, 32)
+
       Spacer()
-      Text(Date(timeIntervalSince1970: session.time.updated / 1000).relativeDescription)
-        .font(.caption2)
-        .foregroundColor(.secondary)
     }
-    .padding(.vertical, 4)
+    .navigationTitle("OpenCode Remote")
   }
 }
 
-struct RootMessageCardView: View {
-  let message: MessageWithParts
+// MARK: - 首页（对齐 home.tsx）
+
+struct HomeScreen: View {
+  @EnvironmentObject var conn: ConnectionStore
+  @EnvironmentObject var store: SessionStore
 
   var body: some View {
-    VStack(alignment: message.info.role == .user ? .trailing : .leading, spacing: 4) {
-      Text(message.info.role == .user ? "你" : "OpenCode")
+    VStack(spacing: 0) {
+      // Logo 区
+      Text("OpenCode")
+        .font(.system(size: 56, weight: .bold, design: .rounded))
+        .foregroundStyle(.secondary.opacity(0.12))
+        .padding(.top, 80)
+
+      // 服务器状态
+      Button {
+        // 服务器选择器（暂未实现）
+      } label: {
+        HStack(spacing: 6) {
+          Circle()
+            .fill(conn.status == .connected ? Color.green : Color.gray)
+            .frame(width: 8, height: 8)
+          Text(conn.serverInfo?.url ?? conn.serverURL)
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .padding(.top, 8)
+
+      // 会话列表（对齐 source 中 recent projects）
+      if store.sessions.isEmpty && !store.isLoading {
+        emptyState
+          .padding(.top, 60)
+      } else {
+        sessionList
+          .padding(.top, 40)
+      }
+    }
+    .refreshable { await store.refreshSessions() }
+    .task {
+      if store.sessions.isEmpty { await store.refreshSessions() }
+    }
+    .onAppear { store.subscribeToEvents() }
+  }
+
+  // 对齐 home.tsx empty state
+  private var emptyState: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "folder.badge.plus")
+        .font(.system(size: 40))
+        .foregroundColor(.secondary)
+      Text("暂无会话")
+        .font(.headline)
+        .foregroundColor(.secondary)
+      Text("在终端启动 OpenCode 后，会话将显示在这里")
         .font(.caption)
         .foregroundColor(.secondary)
-      ForEach(message.parts.indices, id: \.self) { idx in
-        partView(message.parts[idx])
+        .multilineTextAlignment(.center)
+    }
+  }
+
+  // 对齐 home.tsx 项目列表
+  private var sessionList: some View {
+    ScrollView {
+      LazyVStack(spacing: 0) {
+        ForEach(store.sessions.prefix(20)) { session in
+          NavigationLink {
+            ChatScreen()
+              .task { await store.selectSession(session.id) }
+          } label: {
+            HStack {
+              VStack(alignment: .leading, spacing: 2) {
+                Text(session.title)
+                  .font(.system(.body, design: .monospaced))
+                  .lineLimit(1)
+                  .foregroundColor(.primary)
+                Text(session.directory)
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+                  .lineLimit(1)
+              }
+              Spacer()
+              Text(Date(timeIntervalSince1970: session.time.updated / 1000).rel)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+          }
+          Divider().padding(.leading, 20)
+        }
       }
     }
-    .frame(maxWidth: .infinity, alignment: message.info.role == .user ? .trailing : .leading)
-    .padding(.vertical, 4)
+  }
+}
+
+// MARK: - 聊天页面（对齐 session.tsx）
+
+struct ChatScreen: View {
+  @EnvironmentObject var store: SessionStore
+  @State private var input = ""
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    VStack(spacing: 0) {
+      // 消息时间线
+      ScrollViewReader { proxy in
+        ScrollView {
+          LazyVStack(spacing: 0) {
+            ForEach(store.messages) { msg in
+              MessageRow(msg: msg)
+                .id(msg.id)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+          }
+        }
+        .onChange(of: store.messages.count) { _, _ in
+          if !store.messages.isEmpty {
+            proxy.scrollTo(store.messages.last!.id, anchor: .bottom)
+          }
+        }
+        .gesture(
+          DragGesture().onChanged { _ in }
+            .onEnded { _ in }
+        )
+      }
+
+      Divider()
+
+      // 底部输入区
+      VStack(spacing: 6) {
+        // 状态行
+        if let session = store.selectedSession {
+          HStack(spacing: 6) {
+            statusIcon(store.statusForSession(session.id))
+            Text(statusText(store.statusForSession(session.id)))
+              .font(.caption)
+              .foregroundColor(.secondary)
+            Spacer()
+            if store.isSelectedSessionRunning {
+              Button { Task { await store.abort() } } label: {
+                Image(systemName: "stop.circle.fill")
+                  .foregroundColor(.red)
+                  .font(.title3)
+              }
+            }
+          }
+          .padding(.horizontal, 16)
+        }
+
+        // 输入框
+        HStack(spacing: 8) {
+          TextField("输入指令...", text: $input, axis: .vertical)
+            .focused($focused)
+            .lineLimit(1...4)
+
+          Button {
+            let t = input.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            input = ""
+            Task { await store.sendMessage(text: t) }
+          } label: {
+            Image(systemName: "arrow.up.circle.fill")
+              .font(.title2)
+              .foregroundColor(input.isEmpty ? .secondary : .accentColor)
+          }
+          .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(10)
+        .background(Color(.systemGray6))
+        .cornerRadius(20)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+      }
+      .padding(.vertical, 4)
+      .background(.bar)
+    }
+    .toolbar {
+      ToolbarItem(placement: .principal) {
+        Text(store.selectedSession?.title ?? "会话")
+          .font(.headline)
+          .lineLimit(1)
+      }
+    }
+    .onAppear { store.subscribeToEvents() }
+    .onDisappear { store.unsubscribeEvents() }
+  }
+
+  private func statusIcon(_ status: String) -> some View {
+    switch status {
+    case "running": return Image(systemName: "play.circle.fill").foregroundColor(.green)
+    case "thinking": return Image(systemName: "brain.head.profile").foregroundColor(.orange)
+    default: return Image(systemName: "circle").foregroundColor(.secondary)
+    }
+  }
+
+  private func statusText(_ s: String) -> String {
+    switch s { case "running": "运行中"; case "thinking": "思考中"; default: "空闲" }
+  }
+}
+
+// MARK: - 消息行（对齐 MessageTimeline）
+
+struct MessageRow: View {
+  let msg: MessageWithParts
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      // 角色标签
+      HStack {
+        Text(roleLabel)
+          .font(.caption)
+          .foregroundColor(.secondary)
+        Spacer()
+      }
+
+      // Parts
+      ForEach(msg.parts.indices, id: \.self) { i in
+        partView(msg.parts[i])
+      }
+
+      // 错误
+      if case .assistant(let a) = msg.info, let err = a.error {
+        Text(err.displayMessage)
+          .font(.caption)
+          .foregroundColor(.red)
+          .padding(8)
+          .background(Color.red.opacity(0.08))
+          .cornerRadius(8)
+      }
+    }
+    .padding(12)
+    .background(msg.info.role == .user
+      ? Color.accentColor.opacity(0.06)
+      : Color(.secondarySystemGroupedBackground))
+    .cornerRadius(12)
+    .contextMenu {
+      if let text = msgText() {
+        Button { UIPasteboard.general.string = text } label: {
+          Label("复制", systemImage: "doc.on.doc")
+        }
+      }
+    }
   }
 
   @ViewBuilder
-  func partView(_ part: Part) -> some View {
-    switch part {
-    case .text(let p):
-      Text(p.text).textSelection(.enabled)
-    case .reasoning(let p):
-      GroupBox("思考") { Text(p.text).font(.caption).textSelection(.enabled) }
-    case .tool(let p):
-      GroupBox("工具: \(p.tool)") {
-        Text(p.state.statusText).font(.caption)
-        if case .completed(let s) = p.state {
-          Text(s.output)
-            .font(.caption2.monospaced())
-            .lineLimit(10)
-            .textSelection(.enabled)
-        }
+  private func partView(_ p: Part) -> some View {
+    switch p {
+    case .text(let t):
+      Text(t.text)
+        .textSelection(.enabled)
+
+    case .reasoning(let r):
+      DisclosureGroup("思考过程") {
+        Text(r.text)
+          .font(.caption)
+          .textSelection(.enabled)
       }
-    case .stepFinish(let p):
-      Text("消耗: ¥\(String(format: "%.4f", p.cost))")
+      .font(.caption)
+
+    case .tool(let t):
+      toolCallView(t)
+
+    case .stepStart:
+      EmptyView()
+
+    case .stepFinish(let f):
+      Text("\(String(format: "%.0f", f.tokens.input))→\(String(format: "%.0f", f.tokens.output)) tokens · ¥\(String(format: "%.4f", f.cost))")
         .font(.caption2)
         .foregroundColor(.secondary)
-    case .file(let p):
-      Label(p.filename ?? p.mime, systemImage: "doc")
+
+    case .file(let f):
+      Label(f.filename ?? f.url, systemImage: "doc")
+
     default:
       EmptyView()
     }
   }
+
+  @ViewBuilder
+  private func toolCallView(_ t: ToolPart) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Image(systemName: t.tool == "bash" ? "terminal" : "wrench")
+          .font(.caption)
+        Text(t.tool)
+          .font(.caption.bold())
+        Spacer()
+        Text(t.state.statusText)
+          .font(.caption2)
+          .foregroundColor(statusColor(t.state))
+      }
+
+      if case .completed(let s) = t.state, !s.output.isEmpty {
+        Text(s.output)
+          .font(.caption2.monospaced())
+          .lineLimit(8)
+          .textSelection(.enabled)
+      }
+      if case .error(let s) = t.state {
+        Text(s.error)
+          .font(.caption2)
+          .foregroundColor(.red)
+          .lineLimit(4)
+      }
+    }
+    .padding(8)
+    .background(Color(.systemGray6))
+    .cornerRadius(8)
+  }
+
+  private func statusColor(_ s: ToolState) -> Color {
+    switch s { case .pending: .secondary; case .running: .orange; case .completed: .green; case .error: .red }
+  }
+
+  private var roleLabel: String {
+    switch msg.info.role { case .user: "你"; case .assistant: "OpenCode" }
+  }
+
+  private func msgText() -> String? {
+    msg.parts.compactMap { p in
+      switch p {
+      case .text(let t): return t.text
+      case .reasoning(let r): return r.text
+      default: return nil
+      }
+    }.joined(separator: "\n").nilIfEmpty
+  }
 }
 
+// MARK: - 工具
+
 extension Date {
-  var relativeDescription: String {
-    let interval = Date().timeIntervalSince(self)
-    if interval < 60 { return "刚刚" }
-    if interval < 3600 { return "\(Int(interval / 60))m" }
-    if interval < 86400 { return "\(Int(interval / 3600))h" }
-    return "\(Int(interval / 86400))d"
+  var rel: String {
+    let d = Date().timeIntervalSince(self)
+    if d < 60 { return "刚刚" }
+    if d < 3600 { return "\(Int(d/60))m" }
+    if d < 86400 { return "\(Int(d/3600))h" }
+    return "\(Int(d/86400))d"
   }
+}
+
+extension String {
+  var nilIfEmpty: String? { isEmpty ? nil : self }
 }
