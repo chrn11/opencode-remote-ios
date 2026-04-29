@@ -6,11 +6,12 @@ import SwiftUI
 /// 会话列表行组件
 struct SessionRowView: View {
   let session: SessionInfo
+  let status: SessionStatus
 
   var body: some View {
     HStack(spacing: AppSpacing.md) {
       // 状态图标
-      Image(systemName: session.status.iconName)
+      Image(systemName: status.iconName)
         .font(.title3)
         .foregroundColor(statusColor)
         .frame(width: 32)
@@ -22,7 +23,7 @@ struct SessionRowView: View {
           .lineLimit(1)
 
         HStack(spacing: AppSpacing.sm) {
-          Text(session.status.displayName)
+          Text(status.displayName)
             .font(AppTypography.caption)
             .foregroundColor(statusColor)
           Text("·")
@@ -45,7 +46,7 @@ struct SessionRowView: View {
   }
 
   private var statusColor: Color {
-    switch session.status {
+    switch status {
     case .running: return AppColors.running
     case .thinking: return AppColors.thinking
     case .idle: return AppColors.idle

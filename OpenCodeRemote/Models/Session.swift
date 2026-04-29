@@ -27,7 +27,6 @@ struct SessionInfo: Codable, Identifiable, Sendable {
   let revert: SessionRevert?
   let time: SessionTime
 
-  var status: SessionStatus { .idle }
   var messageCount: Int { summary?.files ?? 0 }
   var updatedAt: Date { Date(timeIntervalSince1970: time.updated / 1000) }
 }

@@ -64,24 +64,6 @@ struct ToolCallCardView: View {
   }
 }
 
-/// 工具结果卡片（占位兼容）
-struct ToolResultCardView: View {
-  let resultPart: ToolResultPart
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: AppSpacing.xs) {
-      Text("工具结果")
-        .font(AppTypography.caption.bold())
-      Text(resultPart.output ?? "无输出")
-        .font(AppTypography.monoSmall)
-        .textSelection(.enabled)
-    }
-    .padding(AppSpacing.md)
-    .background(AppColors.toolCard)
-    .cornerRadius(AppSpacing.sm)
-  }
-}
-
 /// 推理过程卡片
 struct ReasoningCardView: View {
   let content: String

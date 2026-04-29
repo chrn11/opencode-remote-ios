@@ -53,14 +53,15 @@ struct ChatScreen: View {
   // MARK: - 子视图
 
   private func sessionHeader(_ session: SessionDetail) -> some View {
+    let status = SessionStatus(rawValue: sessionStore.statusForSession(session.id)) ?? .idle
     HStack {
       VStack(alignment: .leading, spacing: 2) {
         Text(session.title)
           .font(AppTypography.headline)
         HStack(spacing: AppSpacing.sm) {
-          Image(systemName: session.status.iconName)
+          Image(systemName: status.iconName)
             .font(AppTypography.caption)
-          Text(session.status.displayName)
+          Text(status.displayName)
             .font(AppTypography.caption)
             .foregroundColor(.secondary)
         }

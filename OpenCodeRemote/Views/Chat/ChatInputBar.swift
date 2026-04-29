@@ -38,7 +38,7 @@ struct ChatInputBar: View {
         .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
         // 中止按钮（仅运行或思考中显示）
-        if sessionStore.selectedSession?.status == .running || sessionStore.selectedSession?.status == .thinking {
+        if sessionStore.isSelectedSessionRunning {
           Button {
             Task { await sessionStore.abort() }
           } label: {

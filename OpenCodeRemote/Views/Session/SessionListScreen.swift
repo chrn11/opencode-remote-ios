@@ -61,7 +61,10 @@ struct SessionListScreen: View {
       Button {
         onSelectSession(session.id)
       } label: {
-        SessionRowView(session: session)
+        SessionRowView(
+          session: session,
+          status: SessionStatus(rawValue: sessionStore.statusForSession(session.id)) ?? .idle
+        )
       }
       .buttonStyle(.plain)
     }
