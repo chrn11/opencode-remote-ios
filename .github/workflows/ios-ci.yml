@@ -5,41 +5,14 @@ on:
     branches: [master]
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
-    name: Build
+    name: Swift Build
     runs-on: macos-15
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: 下载 xcodegen
-        run: |
-          set -e
-          curl -fsSL -o /tmp/xg.zip https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip
-          echo "downloaded: $(ls -lh /tmp/xg.zip)"
-          unzip -o /tmp/xg.zip -d /tmp/xg
-          echo "extracted: $(ls -la /tmp/xg/bin/)"
-          chmod +x /tmp/xg/bin/xcodegen
-          /tmp/xg/bin/xcodegen --version
-
-      - name: 生成 Xcode 项目
-        run: /tmp/xg/bin/xcodegen generate
-
-      - name: 编译
-        run: |
-          set -e
-          xcodebuild build \
-            -project OpenCodeRemote.xcodeproj \
-            -scheme OpenCodeRemote \
-            -destination "generic/platform=iOS" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -200
+      - name: swift build
+        run: swift build --target OpenCodeRemote 2>&1 | tail -80
