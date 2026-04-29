@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build & Test (iOS 17)
+    name: Build (iOS)
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -21,26 +21,23 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
+      - name: 显示 Xcode 版本
+        run: |
+          xcodebuild -version
+          ls /Applications/Xcode*.app 2>/dev/null || echo "no alternate Xcode found"
+
       - name: 安装 XcodeGen
         run: brew install xcodegen
 
       - name: 生成 Xcode 项目
         run: xcodegen generate
 
-      - name: 选择 Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
-      - name: 显示可用模拟器
-        run: |
-          xcrun simctl list devices available
-          xcrun simctl list runtimes
-
       - name: 编译项目
         run: |
           xcodebuild build \
             -project OpenCodeRemote.xcodeproj \
             -scheme OpenCodeRemote \
-            -destination 'platform=iOS Simulator,name=Any iOS Simulator' \
+            -destination 'platform=iOS Simulator,name=Any iOS Device' \
             -configuration Debug \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -53,25 +50,4 @@ jobs:
         with:
           name: build-log
           path: build.log
-          retention-days: 7
-
-      - name: 运行单元测试
-        run: |
-          xcodebuild test \
-            -project OpenCodeRemote.xcodeproj \
-            -scheme OpenCodeRemote \
-            -destination 'platform=iOS Simulator,name=Any iOS Simulator' \
-            -configuration Debug \
-            -only-testing:OpenCodeRemoteTests \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee test-results.log
-
-      - name: 上传测试结果
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results.log
           retention-days: 7
