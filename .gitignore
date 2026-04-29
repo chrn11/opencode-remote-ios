@@ -1,0 +1,44 @@
+# Xcode
+*.xcuserdata
+*.xcworkspace/xcuserdata
+DerivedData/
+*.xcodeproj/xcuserdata
+*.xcodeproj/project.xcworkspace/xcuserdata
+
+# XcodeGen generated
+*.xcodeproj
+*.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods
+Pods/
+
+# Build artifacts
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Playground
+playground.xcworkspace
+
+# IDE
+.idea/
+*.swp
+*~
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# Secrets / Environment
+*.xcconfig
+!Sample.xcconfig
+.env
+.env.*
+
+# Temporary files
+.temp/
+.test_tools/

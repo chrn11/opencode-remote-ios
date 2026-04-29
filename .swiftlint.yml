@@ -1,0 +1,30 @@
+# OpenCode Remote - SwiftLint 配置
+# 创建时间：2026-04-29
+
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - type_name
+  - identifier_name
+  - nesting
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - contains_over_first_not_nil
+  - first_where
+  - sorted_imports
+  - unowned_in_closure
+
+excluded:
+  - .build
+  - Pods
+  - DerivedData
+
+line_length:
+  warning: 160
+  error: 200
+
+file_length:
+  warning: 500
+  error: 1000
