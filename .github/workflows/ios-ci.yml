@@ -14,27 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: generate project (npx)
-        run: npx xcodegen generate
-
-      - name: build
+      - name: compile
         run: |
-          xcodebuild build \
-            -project OpenCodeRemote.xcodeproj \
-            -scheme OpenCodeRemote \
-            -destination "generic/platform=iOS" \
-            -configuration Release \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -60
+          cd OpenCodeRemote
+          SDK=$(xcrun --show-sdk-path --sdk iphoneos)
+          swiftc \
+            -target arm64-apple-ios17.0 \
+            -sdk "$SDK" \
+            -O \
+            -parse-as-library \
+            -emit-executable \
+            -o /tmp/OpenCodeRemote \
+            $(find . -name '*.swift' | sort) 2>&1 | tail -60
+
+          file /tmp/OpenCodeRemote
 
       - name: pack
         run: |
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
-          mkdir -p Payload
-          cp -r "$APP" Payload/
-          zip -r OpenCodeRemote.ipa Payload
+          mkdir -p Payload/OpenCodeRemote.app
+          cp /tmp/OpenCodeRemote Payload/OpenCodeRemote.app/
+          cp OpenCodeRemote/Info.plist Payload/OpenCodeRemote.app/
+          zip -r OpenCodeRemote.ipa Payload 2>&1
           ls -lh OpenCodeRemote.ipa
 
       - name: upload
