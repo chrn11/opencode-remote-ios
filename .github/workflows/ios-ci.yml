@@ -14,11 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: get xcodegen
-        run: brew install xcodegen
-
-      - name: generate
-        run: xcodegen generate
+      - name: generate project (npx)
+        run: npx xcodegen generate
 
       - name: build
         run: |
@@ -30,25 +27,18 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -80
+            2>&1 | tail -60
 
-      - name: find app
-        id: find
+      - name: pack
         run: |
           APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
-          echo "APP=$APP"
-          echo "APP=$APP" >> $GITHUB_OUTPUT
-
-      - name: pack ipa
-        run: |
-          mkdir -p /tmp/Payload
-          cp -r "${{ steps.find.outputs.APP }}" /tmp/Payload/
-          cd /tmp
-          zip -qr OpenCodeRemote.ipa Payload
+          mkdir -p Payload
+          cp -r "$APP" Payload/
+          zip -r OpenCodeRemote.ipa Payload
           ls -lh OpenCodeRemote.ipa
 
       - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: OpenCodeRemote.ipa
-          path: /tmp/OpenCodeRemote.ipa
+          path: OpenCodeRemote.ipa
