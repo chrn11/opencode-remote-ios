@@ -14,13 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装 xcodegen
-        run: sudo npm install -g xcodegen
+      - name: get xcodegen
+        run: brew install xcodegen
 
-      - name: 生成 Xcode 项目
+      - name: generate
         run: xcodegen generate
 
-      - name: 编译
+      - name: build
         run: |
           xcodebuild build \
             -project OpenCodeRemote.xcodeproj \
@@ -30,20 +30,24 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -40
-          FIND_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
-          echo "APP=$FIND_APP"
-          echo "APP=$FIND_APP" >> $GITHUB_ENV
+            2>&1 | tail -80
 
-      - name: 打包 IPA
+      - name: find app
+        id: find
         run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
+          echo "APP=$APP"
+          echo "APP=$APP" >> $GITHUB_OUTPUT
+
+      - name: pack ipa
+        run: |
+          mkdir -p /tmp/Payload
+          cp -r "${{ steps.find.outputs.APP }}" /tmp/Payload/
           cd /tmp
-          mkdir -p Payload
-          cp -r "$APP" Payload/ 2>/dev/null
           zip -qr OpenCodeRemote.ipa Payload
           ls -lh OpenCodeRemote.ipa
 
-      - name: 上传 IPA
+      - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: OpenCodeRemote.ipa
