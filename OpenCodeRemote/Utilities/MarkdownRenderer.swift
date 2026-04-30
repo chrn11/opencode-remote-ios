@@ -10,7 +10,7 @@ enum MarkdownRenderer {
   static func render(_ text: String) -> AttributedString {
     do {
       // 预处理：将代码块标记为等宽字体友好格式
-      var processed = text
+      let processed = text
       // 处理行内代码 `code`
       // 处理代码块 ```code```
       var attributed = try AttributedString(
