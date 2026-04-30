@@ -1,4 +1,4 @@
-name: iOS CI
+name: Build IPA
 
 on:
   push:
@@ -7,12 +7,44 @@ on:
 
 jobs:
   build:
-    name: Swift Build
+    name: Build IPA
     runs-on: macos-15
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: swift build
-        run: swift build --target OpenCodeRemote 2>&1 | tail -80
+      - name: 安装 xcodegen
+        run: npm install -g xcodegen
+
+      - name: 生成 Xcode 项目
+        run: xcodegen generate
+
+      - name: 编译
+        run: |
+          xcodebuild build \
+            -project OpenCodeRemote.xcodeproj \
+            -scheme OpenCodeRemote \
+            -destination "generic/platform=iOS" \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -80
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
+          echo "APP: $APP"
+          echo "APP=$APP" >> $GITHUB_ENV
+
+      - name: 打包 IPA
+        run: |
+          cd /tmp
+          mkdir -p Payload
+          cp -r "$APP" Payload/
+          zip -qr OpenCodeRemote.ipa Payload
+          ls -lh OpenCodeRemote.ipa
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodeRemote.ipa
+          path: /tmp/OpenCodeRemote.ipa
