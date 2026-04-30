@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 安装 xcodegen
-        run: npm install -g xcodegen
+        run: sudo npm install -g xcodegen
 
       - name: 生成 Xcode 项目
         run: xcodegen generate
@@ -30,16 +30,16 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -80
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
-          echo "APP: $APP"
-          echo "APP=$APP" >> $GITHUB_ENV
+            2>&1 | tail -40
+          FIND_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "OpenCodeRemote.app" -type d | head -1)
+          echo "APP=$FIND_APP"
+          echo "APP=$FIND_APP" >> $GITHUB_ENV
 
       - name: 打包 IPA
         run: |
           cd /tmp
           mkdir -p Payload
-          cp -r "$APP" Payload/
+          cp -r "$APP" Payload/ 2>/dev/null
           zip -qr OpenCodeRemote.ipa Payload
           ls -lh OpenCodeRemote.ipa
 
