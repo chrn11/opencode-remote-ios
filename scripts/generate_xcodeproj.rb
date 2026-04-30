@@ -73,6 +73,8 @@ end
 
 plist_files.each do |file_path|
   relative = file_path.sub("#{APP_NAME}/", '')
+  # Info.plist 已通过 INFOPLIST_FILE 设置，不可重复加入 Resources
+  next if relative == 'Info.plist'
   dir_part = File.dirname(relative)
   group = dir_part == '.' ? root_group : ensure_groups(root_group, dir_part)
   ref = group.new_file(relative)
