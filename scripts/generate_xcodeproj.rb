@@ -67,7 +67,8 @@ source_files.each do |file_path|
   relative = file_path.sub("#{APP_NAME}/", '')
   dir_part = File.dirname(relative)
   group = dir_part == '.' ? root_group : ensure_groups(root_group, dir_part)
-  ref = group.new_file(relative)
+  # 文件引用路径必须是相对于该 group 的，否则路径会重复嵌套
+  ref = group.new_file(File.basename(relative))
   target.source_build_phase.add_file_reference(ref)
 end
 
@@ -77,7 +78,7 @@ plist_files.each do |file_path|
   next if relative == 'Info.plist'
   dir_part = File.dirname(relative)
   group = dir_part == '.' ? root_group : ensure_groups(root_group, dir_part)
-  ref = group.new_file(relative)
+  ref = group.new_file(File.basename(relative))
   target.resources_build_phase.add_file_reference(ref)
 end
 
