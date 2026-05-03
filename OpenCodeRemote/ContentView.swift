@@ -469,6 +469,7 @@ struct ChatScreen: View {
           store.respondToQuestion(questionID: question.id, answer: answer)
         }
       }
+    }
     .sheet(isPresented: $showConfigSheet) {
       ConfigSheet()
         .environmentObject(store)
@@ -724,13 +725,15 @@ struct MessageRow: View {
   }
 
   private func msgText() -> String? {
-    msg.parts.compactMap { p in
+    let texts = msg.parts.compactMap { p in
       switch p {
       case .text(let t): return t.text
       case .reasoning(let r): return r.text
       default: return nil
       }
-    }.joined(separator: "\n").nilIfEmpty
+    }
+    let joined = texts.joined(separator: "\n")
+    return joined.isEmpty ? nil : joined
   }
 
   /// 检测输出是否包含 unified diff 格式

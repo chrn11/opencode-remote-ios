@@ -197,7 +197,7 @@ actor OpenCodeAPIClient {
     model: String? = nil,
     variant: String? = nil
   ) async throws {
-    var parts: [[String: String]] = [["type": "text", "text": text]]
+    let parts: [[String: String]] = [["type": "text", "text": text]]
     var body: [String: CodableValue] = [
       "parts": CodableValue.array(parts.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) }),
       "request_id": CodableValue.string(requestId)
