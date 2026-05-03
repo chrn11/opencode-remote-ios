@@ -360,26 +360,22 @@ struct ChatScreen: View {
             Image(systemName: "gearshape.fill")
               .font(.caption2)
               .foregroundColor(.secondary)
-            Text(store.activeAgent)
-              .font(.caption2)
-              .foregroundColor(.secondary)
             if !store.activeModel.isEmpty {
-              Text("·")
-                .font(.caption2)
-                .foregroundColor(.secondary)
               Text(store.activeModel)
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            }
-            if !store.activeVariant.isEmpty {
-              Text("·")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-              Text(store.activeVariant)
+            } else {
+              Text("默认模型")
                 .font(.caption2)
                 .foregroundColor(.secondary)
             }
+            Text("·")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+            Text(store.reasoningEffort == "low" ? "低" : store.reasoningEffort == "high" ? "高" : "中")
+              .font(.caption2)
+              .foregroundColor(.secondary)
             Image(systemName: "chevron.up")
               .font(.caption2)
               .foregroundColor(.secondary)
@@ -748,34 +744,14 @@ struct ConfigSheet: View {
   @EnvironmentObject var store: SessionStore
   @Environment(\.dismiss) private var dismiss
 
-  let agents = ["coder", "summarizer", "task", "title"]
-
   var body: some View {
     NavigationView {
       Form {
-        Section("Agent") {
-          Picker("Agent", selection: $store.activeAgent) {
-            ForEach(agents, id: \.self) { agent in
-              Text(agent).tag(agent)
-            }
-          }
-          .pickerStyle(.inline)
-        }
-
         Section("模型") {
           TextField("provider/model", text: $store.activeModel)
             .keyboardType(.asciiCapable)
           if store.activeModel.isEmpty {
-            Text("留空使用服务器默认模型")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-          }
-        }
-
-        Section("变体") {
-          TextField("留空表示默认", text: $store.activeVariant)
-          if store.activeVariant.isEmpty {
-            Text("留空使用服务器默认变体")
+            Text("留空使用服务器默认模型 (ollama-cloud/glm-5.1)")
               .font(.caption2)
               .foregroundColor(.secondary)
           }

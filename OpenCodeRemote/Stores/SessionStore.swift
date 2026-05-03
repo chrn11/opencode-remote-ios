@@ -29,7 +29,7 @@ final class SessionStore: ObservableObject {
 
   // 当前会话配置（用户可覆盖，发送消息时携带）
   @Published var reasoningEffort: String = "medium" // low / medium / high
-  @Published var activeAgent: String = "coder"
+  @Published var activeAgent: String = ""
   @Published var activeModel: String = ""
   @Published var activeVariant: String = ""
 
