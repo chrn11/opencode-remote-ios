@@ -45,22 +45,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            | xcbeautify || cat
-        continue-on-error: true
-
-      # 如果 archive 失败，先只 build 验证编译
-      - name: Build only (fallback verification)
-        if: failure()
-        run: |
-          xcodebuild build \
-            -project OpenCodeRemote.xcodeproj \
-            -scheme OpenCodeRemote \
-            -sdk iphoneos \
-            -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            | xcbeautify || cat
+            | xcbeautify
 
       # --------------------------------------------------
       # 4. 打包 .app → .ipa（未签名）
@@ -68,15 +53,10 @@ jobs:
       - name: Package unsigned IPA
         run: |
           APP_BUNDLE="build/OpenCodeRemote.xcarchive/Products/Applications/OpenCodeRemote.app"
-          if [ -d "$APP_BUNDLE" ]; then
-            mkdir -p Payload
-            cp -R "$APP_BUNDLE" Payload/
-            zip -r OpenCodeRemote.ipa Payload
-            ls -lh OpenCodeRemote.ipa
-          else
-            echo "⚠️ 未找到 .app bundle，跳过打包"
-            ls -R build/ || true
-          fi
+          mkdir -p Payload
+          cp -R "$APP_BUNDLE" Payload/
+          zip -r OpenCodeRemote.ipa Payload
+          ls -lh OpenCodeRemote.ipa
 
       # --------------------------------------------------
       # 5. 上传构建产物

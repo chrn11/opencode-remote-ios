@@ -89,7 +89,8 @@ actor EventStreamClient {
           items.append(URLQueryItem(name: "session_id", value: sessionId))
         }
         if !items.isEmpty {
-          components?.queryItems = (components?.queryItems ?? []) + items
+          let existing = components?.queryItems ?? []
+          components?.queryItems = existing + items
         }
         guard let finalURL = components?.url else { throw NetworkError.invalidURL }
 

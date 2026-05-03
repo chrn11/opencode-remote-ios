@@ -76,7 +76,8 @@ actor OpenCodeAPIClient {
       items.append(URLQueryItem(name: "auth_token", value: authToken))
     }
     if !items.isEmpty {
-      components.queryItems = (components.queryItems ?? []) + items
+      let existing = components.queryItems ?? []
+      components.queryItems = existing + items
     }
 
     guard let finalURL = components.url else {
