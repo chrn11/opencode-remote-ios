@@ -22,7 +22,7 @@ struct ContentView: View {
               }
           }
       }
-      .onChange(of: conn.status) { _, status in
+      .onChange(of: conn.status) { status in
         if status != .connected {
           path = NavigationPath()
         }
@@ -301,7 +301,7 @@ struct ChatScreen: View {
             }
           }
         }
-        .onChange(of: store.messages.count) { _, _ in
+        .onChange(of: store.messages.count) { _ in
           if !store.messages.isEmpty {
             proxy.scrollTo(store.messages.last!.id, anchor: .bottom)
           }

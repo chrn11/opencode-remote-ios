@@ -7,7 +7,7 @@ require 'xcodeproj'
 
 APP_NAME   = 'OpenCodeRemote'
 BUNDLE_ID  = 'com.opencode.remote'
-DEPLOYMENT_TARGET = '17.0'
+DEPLOYMENT_TARGET = '16.0'
 TEAM_ID    = ENV['APPLE_TEAM_ID'] || ''
 
 # -----------------------------------------------------------

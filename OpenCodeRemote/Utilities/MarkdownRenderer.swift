@@ -14,7 +14,7 @@ enum MarkdownRenderer {
         markdown: processed,
         options: AttributedString.MarkdownParsingOptions(
           allowsExtendedAttributes: true,
-          interpretedSyntax: .inlineOnlyPreservingWhitespace
+          interpretedSyntax: .inlineOnly
         )
       )
 
