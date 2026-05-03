@@ -38,9 +38,9 @@ final class ConnectionStore: ObservableObject {
   }
 
   func connect() async -> Bool {
-    guard !serverURL.isEmpty, !authToken.isEmpty else {
+    guard !serverURL.isEmpty else {
       status = .error
-      lastError = "请填写服务器地址和认证令牌"
+      lastError = "请填写服务器地址"
       return false
     }
 
