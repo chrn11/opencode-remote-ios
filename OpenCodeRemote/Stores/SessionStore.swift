@@ -33,6 +33,10 @@ final class SessionStore: ObservableObject {
   @Published var activeModel: String = ""
   @Published var activeVariant: String = ""
 
+  // 可用 Provider/Model 列表（从服务器获取）
+  @Published var providers: [ProviderInfo] = []
+  @Published var globalConfig: GlobalConfig?
+
   private let apiClient: OpenCodeAPIClient
   private let eventStreamClient: EventStreamClient
   private let connectionStore: ConnectionStore
@@ -68,6 +72,18 @@ final class SessionStore: ObservableObject {
       }
       let status = try await apiClient.fetchSessionStatus()
       sessionStatus = status
+
+      // 加载可用 Provider/Model 列表
+      if providers.isEmpty {
+        providers = try await apiClient.fetchProviders()
+      }
+      if globalConfig == nil {
+        globalConfig = try await apiClient.fetchGlobalConfig()
+        // 如果用户未手动设置模型，使用服务器默认
+        if activeModel.isEmpty, let defaultModel = globalConfig?.model {
+          activeModel = defaultModel
+        }
+      }
     } catch {
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }

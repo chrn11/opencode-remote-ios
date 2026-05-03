@@ -748,10 +748,62 @@ struct ConfigSheet: View {
     NavigationView {
       Form {
         Section("模型") {
-          TextField("provider/model", text: $store.activeModel)
-            .keyboardType(.asciiCapable)
-          if store.activeModel.isEmpty {
-            Text("留空使用服务器默认模型 (ollama-cloud/glm-5.1)")
+          if store.providers.isEmpty {
+            TextField("provider/model", text: $store.activeModel)
+              .keyboardType(.asciiCapable)
+            Text("无法获取模型列表，可手动输入")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+          } else {
+            // Provider + Model 联动选择
+            if let provider = store.providers.first(where: { $0.id == store.activeModel.components(separatedBy: "/").first }) {
+              Picker("Provider", selection: Binding(
+                get: { store.activeModel.components(separatedBy: "/").first ?? "" },
+                set: { newProviderID in
+                  if let p = store.providers.first(where: { $0.id == newProviderID }) {
+                    let firstModel = p.models.keys.first ?? ""
+                    store.activeModel = "\(newProviderID)/\(firstModel)"
+                  }
+                }
+              )) {
+                ForEach(store.providers) { provider in
+                  Text(provider.name).tag(provider.id)
+                }
+              }
+
+              if let modelID = store.activeModel.components(separatedBy: "/").dropFirst().first {
+                Picker("模型", selection: Binding(
+                  get: { modelID },
+                  set: { newModel in
+                    let providerID = store.activeModel.components(separatedBy: "/").first ?? ""
+                    store.activeModel = "\(providerID)/\(newModel)"
+                  }
+                )) {
+                  ForEach(Array(provider.models.keys.sorted()), id: \.self) { key in
+                    let info = provider.models[key]
+                    Text(info?.name ?? key).tag(key)
+                  }
+                }
+              }
+            } else {
+              Picker("Provider", selection: Binding(
+                get: { store.providers.first?.id ?? "" },
+                set: { newProviderID in
+                  if let p = store.providers.first(where: { $0.id == newProviderID }) {
+                    let firstModel = p.models.keys.first ?? ""
+                    store.activeModel = "\(newProviderID)/\(firstModel)"
+                  }
+                }
+              )) {
+                ForEach(store.providers) { provider in
+                  Text(provider.name).tag(provider.id)
+                }
+              }
+            }
+          }
+
+          if let defaultModel = store.globalConfig?.model {
+            Text("服务器默认: \(defaultModel)")
               .font(.caption2)
               .foregroundColor(.secondary)
           }

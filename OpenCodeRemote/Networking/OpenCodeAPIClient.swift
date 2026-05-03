@@ -251,6 +251,25 @@ actor OpenCodeAPIClient {
     let (data, response) = try await session.data(for: request)
     try HTTPValidator.validate(response, data: data)
   }
+
+  // MARK: - 获取可用模型列表
+
+  /// 获取已连接的 Provider 列表及其模型
+  func fetchProviders() async throws -> [ProviderInfo] {
+    let request = try makeRequest("provider")
+    let (data, response) = try await session.data(for: request)
+    try HTTPValidator.validate(response, data: data)
+    return try decoder.decode([ProviderInfo].self, from: data)
+  }
+
+  /// 获取全局配置（含默认模型、agent 等）
+  func fetchGlobalConfig() async throws -> GlobalConfig {
+    let request = try makeRequest("global/config")
+    let (data, response) = try await session.data(for: request)
+    try HTTPValidator.validate(response, data: data)
+    return try decoder.decode(GlobalConfig.self, from: data)
+  }
+}
 }
 
 // MARK: - 临时类型（不依赖外部模块）
@@ -275,16 +294,47 @@ struct PermissionResponse: Codable, Sendable {
   let reason: String?
 }
 
-private struct AnyEncodable: Encodable {
-  private let encodeImpl: (Encoder) throws -> Void
+// MARK: - 全局配置
 
-  init(_ value: any Encodable) {
-    self.encodeImpl = { encoder in
-      try value.encode(to: encoder)
-    }
+struct GlobalConfig: Codable, Sendable {
+  let model: String?
+  let smallModel: String?
+  let agent: [String: AgentConfig]?
+  let plugin: [String]?
+  let mcp: [String: MCPConfig]?
+  let default: [String: String]?
+  let connected: [String]?
+
+  struct AgentConfig: Codable, Sendable {
+    let prompt: String?
+    let options: String?
+    let permission: String?
   }
 
-  func encode(to encoder: Encoder) throws {
-    try encodeImpl(encoder)
+  struct MCPConfig: Codable, Sendable {
+    let type: String?
+    let command: String?
+    let environment: [String: String]?
   }
+}
+
+// MARK: - Provider 信息
+
+struct ProviderInfo: Codable, Identifiable, Sendable {
+  let id: String
+  let name: String
+  let source: String
+  let env: String
+  let options: String?
+  let models: [String: ModelInfo]
+}
+
+struct ModelInfo: Codable, Sendable {
+  let name: String?
+  let contextWindow: Int?
+  let costPer1MIn: Double?
+  let costPer1MOut: Double?
+  let defaultMaxTokens: Int?
+  let canReason: Bool?
+  let supportsAttachments: Bool?
 }
