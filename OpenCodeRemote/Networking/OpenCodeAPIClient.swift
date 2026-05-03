@@ -72,7 +72,7 @@ actor OpenCodeAPIClient {
     }
 
     var items = queryItems
-    if let authToken {
+    if let authToken, !authToken.isEmpty {
       items.append(URLQueryItem(name: "auth_token", value: authToken))
     }
     if !items.isEmpty {
@@ -89,14 +89,14 @@ actor OpenCodeAPIClient {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-    if let authToken {
+    if let authToken, !authToken.isEmpty {
       request.setValue(authToken, forHTTPHeaderField: "Authorization")
     } else if let credentials {
       let auth = Data("\(credentials.username):\(credentials.password)".utf8).base64EncodedString()
       request.setValue("Basic \(auth)", forHTTPHeaderField: "Authorization")
     }
 
-    if let directory {
+    if let directory, !directory.isEmpty {
       request.setValue(directory, forHTTPHeaderField: "x-opencode-directory")
     }
 

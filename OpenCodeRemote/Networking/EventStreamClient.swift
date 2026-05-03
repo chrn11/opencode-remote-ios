@@ -99,7 +99,7 @@ actor EventStreamClient {
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = .infinity
 
-        if let authToken {
+        if let authToken, !authToken.isEmpty {
           request.setValue(authToken, forHTTPHeaderField: "Authorization")
         } else if let credentials {
           let auth = Data("\(credentials.username):\(credentials.password)".utf8).base64EncodedString()
