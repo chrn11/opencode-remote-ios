@@ -17,7 +17,7 @@ final class SessionStore: ObservableObject {
 
   // 分页
   private var nextCursor: String?
-  private var hasMore = false
+  @Published var hasMoreMessages = false
 
   // 去重
   private var seenKeys = Set<String>(minimumCapacity: 500)
@@ -76,7 +76,7 @@ final class SessionStore: ObservableObject {
       let result = try await apiClient.fetchMessages(sessionId: id, limit: 50)
       messages = result.messages
       nextCursor = result.nextCursor
-      hasMore = result.nextCursor != nil
+      hasMoreMessages = result.nextCursor != nil
 
       // 加载待审批权限
       pendingPermissions = try await apiClient.fetchPermissions()
@@ -87,12 +87,12 @@ final class SessionStore: ObservableObject {
   }
 
   func loadMoreMessages() async {
-    guard let sid = selectedSession?.id, hasMore, let cursor = nextCursor else { return }
+    guard let sid = selectedSession?.id, hasMoreMessages, let cursor = nextCursor else { return }
     do {
       let result = try await apiClient.fetchMessages(sessionId: sid, limit: 50, before: cursor)
       messages.insert(contentsOf: result.messages, at: 0)
       nextCursor = result.nextCursor
-      hasMore = result.nextCursor != nil
+      hasMoreMessages = result.nextCursor != nil
     } catch {
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }
@@ -122,6 +122,35 @@ final class SessionStore: ObservableObject {
     error = nil
     do { _ = try await apiClient.abort(sessionId: sid) }
     catch { self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription }
+  }
+
+  // MARK: - 会话管理
+
+  /// 创建新会话并导航
+  func createSession(title: String? = nil, navigate: @escaping (String) -> Void) async {
+    error = nil
+    do {
+      let detail = try await apiClient.createSession(title: title)
+      await refreshSessions()
+      navigate(detail.id)
+    } catch {
+      self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
+    }
+  }
+
+  /// 删除会话
+  func deleteSession(_ id: String) async {
+    error = nil
+    do {
+      try await apiClient.deleteSession(id)
+      sessions.removeAll { $0.id == id }
+      if selectedSession?.id == id {
+        selectedSession = nil
+        messages = []
+      }
+    } catch {
+      self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
+    }
   }
 
   // MARK: - 权限

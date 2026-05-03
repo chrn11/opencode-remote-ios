@@ -9,10 +9,7 @@ enum MarkdownRenderer {
   /// 将 Markdown 文本转换为 AttributedString
   static func render(_ text: String) -> AttributedString {
     do {
-      // 预处理：将代码块标记为等宽字体友好格式
       let processed = text
-      // 处理行内代码 `code`
-      // 处理代码块 ```code```
       var attributed = try AttributedString(
         markdown: processed,
         options: AttributedString.MarkdownParsingOptions(
@@ -21,11 +18,18 @@ enum MarkdownRenderer {
         )
       )
 
-      // 设置基础字体
       attributed.font = .system(.body, design: .default)
+
+      for run in attributed.runs {
+        if run.inlinePresentationIntent?.contains(.code) == true {
+          attributed[run.range].font = .system(.body, design: .monospaced)
+          attributed[run.range].backgroundColor = Color(.systemGray6)
+          attributed[run.range].foregroundColor = .primary
+        }
+      }
+
       return attributed
     } catch {
-      // Markdown 解析失败时降级为纯文本
       return AttributedString(text)
     }
   }

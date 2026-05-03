@@ -12,7 +12,7 @@ struct ContentView: View {
   var body: some View {
     if conn.status == .connected {
       NavigationStack(path: $path) {
-        HomeScreen()
+        HomeScreen(path: $path)
           .navigationDestination(for: String.self) { sessionId in
             ChatScreen()
               .task {
@@ -102,7 +102,17 @@ struct ConnectScreen: View {
 struct HomeScreen: View {
   @EnvironmentObject var conn: ConnectionStore
   @EnvironmentObject var store: SessionStore
+  @Binding var path: NavigationPath
   @State private var searchText = ""
+
+  /// 过滤后的会话列表
+  private var filteredSessions: [SessionInfo] {
+    guard !searchText.isEmpty else { return store.sessions }
+    let keyword = searchText.lowercased()
+    return store.sessions.filter {
+      $0.title.lowercased().contains(keyword) || $0.directory.lowercased().contains(keyword)
+    }
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -133,7 +143,7 @@ struct HomeScreen: View {
       .padding(.top, 8)
 
       // 会话列表（对齐 source 中 recent projects）
-      if store.sessions.isEmpty && !store.isLoading {
+      if filteredSessions.isEmpty && !store.isLoading {
         emptyState
           .padding(.top, 60)
       } else {
@@ -147,6 +157,21 @@ struct HomeScreen: View {
     }
     .onAppear { store.subscribeToEvents() }
     .onDisappear { store.unsubscribeEvents() }
+    .toolbar {
+      ToolbarItem(placement: .navigationBarTrailing) {
+        Button {
+          Task {
+            await store.createSession { sessionId in
+              path.append(sessionId)
+            }
+          }
+        } label: {
+          Image(systemName: "plus.circle.fill")
+        }
+      }
+    }
+    .navigationTitle("OpenCode")
+    .navigationBarTitleDisplayMode(.inline)
   }
 
   // 对齐 home.tsx empty state
@@ -169,7 +194,7 @@ struct HomeScreen: View {
   private var sessionList: some View {
     ScrollView {
       LazyVStack(spacing: 0) {
-        ForEach(store.sessions.prefix(20)) { session in
+        ForEach(Array(filteredSessions.prefix(50))) { session in
           NavigationLink(value: session.id) {
             HStack {
               VStack(alignment: .leading, spacing: 2) {
@@ -190,6 +215,13 @@ struct HomeScreen: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
           }
+          .contextMenu {
+            Button(role: .destructive) {
+              Task { await store.deleteSession(session.id) }
+            } label: {
+              Label("删除会话", systemImage: "trash")
+            }
+          }
           Divider().padding(.leading, 20)
         }
       }
@@ -202,6 +234,7 @@ struct HomeScreen: View {
 struct ChatScreen: View {
   @EnvironmentObject var store: SessionStore
   @State private var input = ""
+  @State private var isLoadingMore = false
   @FocusState private var focused: Bool
 
   enum ActiveSheet: Identifiable {
@@ -231,6 +264,28 @@ struct ChatScreen: View {
       ScrollViewReader { proxy in
         ScrollView {
           LazyVStack(spacing: 0) {
+            // 加载更多按钮
+            if store.hasMoreMessages {
+              Button {
+                isLoadingMore = true
+                Task {
+                  await store.loadMoreMessages()
+                  isLoadingMore = false
+                }
+              } label: {
+                if isLoadingMore {
+                  ProgressView()
+                    .padding(.vertical, 12)
+                } else {
+                  Text("加载更多消息")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 12)
+                }
+              }
+              .id("load-more")
+            }
+
             ForEach(store.messages) { msg in
               MessageRow(msg: msg)
                 .id(msg.id)
@@ -244,10 +299,6 @@ struct ChatScreen: View {
             proxy.scrollTo(store.messages.last!.id, anchor: .bottom)
           }
         }
-        .gesture(
-          DragGesture().onChanged { _ in }
-            .onEnded { _ in }
-        )
       }
 
       Divider()
@@ -416,6 +467,104 @@ struct MessageRow: View {
 
     case .file(let f):
       Label(f.filename ?? f.url, systemImage: "doc")
+
+    case .snapshot(let s):
+      VStack(alignment: .leading, spacing: 2) {
+        Label("快照", systemImage: "camera")
+          .font(.caption.bold())
+        Text(s.snapshot.prefix(100))
+          .font(.caption2.monospaced())
+          .lineLimit(3)
+          .foregroundColor(.secondary)
+      }
+      .padding(6)
+      .background(Color(.systemGray6))
+      .cornerRadius(6)
+
+    case .patch(let p):
+      VStack(alignment: .leading, spacing: 2) {
+        Label("补丁 \(p.hash)", systemImage: "doc.text")
+          .font(.caption.bold())
+        ForEach(p.files.prefix(5), id: \.self) { file in
+          Text(file)
+            .font(.caption2.monospaced())
+            .foregroundColor(.secondary)
+        }
+        if p.files.count > 5 {
+          Text("…还有 \(p.files.count - 5) 个文件")
+            .font(.caption2)
+            .foregroundColor(.secondary)
+        }
+      }
+      .padding(6)
+      .background(Color(.systemGray6))
+      .cornerRadius(6)
+
+    case .agent(let a):
+      HStack(spacing: 4) {
+        Image(systemName: "person.crop.circle")
+          .font(.caption)
+        Text(a.name)
+          .font(.caption.bold())
+      }
+      .padding(.vertical, 2)
+      .padding(.horizontal, 8)
+      .background(Color.accentColor.opacity(0.12))
+      .cornerRadius(10)
+
+    case .compaction(let c):
+      HStack(spacing: 4) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.caption2)
+        Text(c.auto ? "自动压缩" : "手动压缩")
+          .font(.caption2)
+        if c.overflow == true {
+          Text("(溢出)")
+            .font(.caption2)
+            .foregroundColor(.orange)
+        }
+      }
+      .foregroundColor(.secondary)
+      .padding(.vertical, 2)
+
+    case .subtask(let s):
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 4) {
+          Image(systemName: "arrowshape.turn.down.right")
+            .font(.caption2)
+          Text(s.description)
+            .font(.caption.bold())
+            .lineLimit(1)
+        }
+        Text(s.agent)
+          .font(.caption2)
+          .foregroundColor(.secondary)
+        if let model = s.model {
+          Text("\(model.providerID)/\(model.modelID)")
+            .font(.caption2.monospaced())
+            .foregroundColor(.secondary)
+        }
+      }
+      .padding(6)
+      .background(Color(.systemGray6))
+      .cornerRadius(6)
+
+    case .retry(let r):
+      HStack(spacing: 4) {
+        Image(systemName: "arrow.clockwise")
+          .font(.caption2)
+          .foregroundColor(.orange)
+        Text("第 \(r.attempt) 次重试")
+          .font(.caption2)
+          .foregroundColor(.orange)
+      }
+      .padding(.vertical, 2)
+
+    case .unknown(let u):
+      Text("[未知类型: \(u.rawType)]")
+        .font(.caption2)
+        .foregroundColor(.secondary)
+        .italic()
 
     default:
       EmptyView()
