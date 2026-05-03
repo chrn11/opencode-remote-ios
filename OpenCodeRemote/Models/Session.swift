@@ -29,7 +29,6 @@ struct SessionInfo: Codable, Identifiable, Sendable {
 
   var messageCount: Int { summary?.files ?? 0 }
   var updatedAt: Date { Date(timeIntervalSince1970: time.updated / 1000) }
-  var updatedAt: Date { Date(timeIntervalSince1970: time.updated / 1000) }
 }
 
 extension SessionInfo: Hashable {
