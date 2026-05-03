@@ -31,6 +31,16 @@ struct SessionInfo: Codable, Identifiable, Sendable {
   var updatedAt: Date { Date(timeIntervalSince1970: time.updated / 1000) }
 }
 
+extension SessionInfo: Hashable {
+  static func == (lhs: SessionInfo, rhs: SessionInfo) -> Bool {
+    lhs.id == rhs.id
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(id)
+  }
+}
+
 /// 会话统计摘要
 struct SessionSummary: Codable, Sendable {
   let additions: Int

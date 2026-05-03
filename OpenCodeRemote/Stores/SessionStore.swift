@@ -30,11 +30,20 @@ final class SessionStore: ObservableObject {
   private let apiClient: OpenCodeAPIClient
   private let eventStreamClient: EventStreamClient
   private let connectionStore: ConnectionStore
+  private var isSubscribed = false
 
   init(apiClient: OpenCodeAPIClient, eventStreamClient: EventStreamClient, connectionStore: ConnectionStore) {
     self.apiClient = apiClient
     self.eventStreamClient = eventStreamClient
     self.connectionStore = connectionStore
+  }
+
+  private func recordSeenKey(_ key: String) {
+    seenKeys.insert(key)
+    if seenKeys.count > maxSeenKeys {
+      let sorted = seenKeys.sorted()
+      seenKeys = Set(sorted.suffix(maxSeenKeys / 2))
+    }
   }
 
   // MARK: - 会话
@@ -127,6 +136,11 @@ final class SessionStore: ObservableObject {
     }
   }
 
+  /// 回复交互式问题
+  func respondToQuestion(questionID: String, answer: String) {
+    activeQuestions.removeAll { $0.id == questionID }
+  }
+
   /// 兼容旧调用：响应权限请求
   func respondToPermission(permissionId: String, action: PermissionAction, reason: String? = nil) async {
     let reply: PermissionReply
@@ -141,17 +155,23 @@ final class SessionStore: ObservableObject {
       reply = .once
     }
     await replyPermission(requestID: permissionId, reply: reply)
-    _ = reason
   }
 
   // MARK: - SSE
 
   func subscribeToEvents() {
+    guard !isSubscribed else { return }
+    isSubscribed = true
+
     var urlString = connectionStore.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
     if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
       urlString = "http://" + urlString
     }
-    guard let url = URL(string: urlString) else { return }
+    guard let url = URL(string: urlString) else {
+      isSubscribed = false
+      return
+    }
+
     Task {
       await eventStreamClient.configure(baseURL: url, authToken: connectionStore.authToken) { [weak self] event in
         Task { @MainActor in self?.handleSSEEvent(event) }
@@ -161,6 +181,8 @@ final class SessionStore: ObservableObject {
   }
 
   func unsubscribeEvents() {
+    guard isSubscribed else { return }
+    isSubscribed = false
     Task { await eventStreamClient.disconnect() }
   }
 
@@ -173,11 +195,11 @@ final class SessionStore: ObservableObject {
 
     case .sessionCreated(let id, let info):
       sessions.insert(info, at: 0)
-      seenKeys.insert("sess-created-\(id)")
+      recordSeenKey("sess-created-\(id)")
 
     case .sessionUpdated(let id, let info):
       if let idx = sessions.firstIndex(where: { $0.id == id }) { sessions[idx] = info }
-      seenKeys.insert("sess-updated-\(id)")
+      recordSeenKey("sess-updated-\(id)")
 
     case .sessionDeleted(let id, _):
       sessions.removeAll { $0.id == id }

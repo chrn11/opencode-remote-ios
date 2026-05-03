@@ -464,3 +464,23 @@ extension ToolState {
     }
   }
 }
+
+extension Part {
+  var id: PartID {
+    switch self {
+    case .text(let p): return p.id
+    case .reasoning(let p): return p.id
+    case .file(let p): return p.id
+    case .tool(let p): return p.id
+    case .snapshot(let p): return p.id
+    case .patch(let p): return p.id
+    case .agent(let p): return p.id
+    case .compaction(let p): return p.id
+    case .subtask(let p): return p.id
+    case .retry(let p): return p.id
+    case .stepStart(let p): return p.id
+    case .stepFinish(let p): return p.id
+    case .unknown(let p): return p.id
+    }
+  }
+}

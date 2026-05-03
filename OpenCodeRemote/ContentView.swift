@@ -7,15 +7,24 @@ import SwiftUI
 struct ContentView: View {
   @EnvironmentObject var conn: ConnectionStore
   @EnvironmentObject var store: SessionStore
+  @State private var path = NavigationPath()
 
   var body: some View {
     if conn.status == .connected {
-      if store.selectedSession != nil {
-        ChatScreen()
-          .navigationBarBackButtonHidden(false)
-      } else {
-        NavigationStack {
-          HomeScreen()
+      NavigationStack(path: $path) {
+        HomeScreen()
+          .navigationDestination(for: String.self) { sessionId in
+            ChatScreen()
+              .task {
+                if store.selectedSession?.id != sessionId {
+                  await store.selectSession(sessionId)
+                }
+              }
+          }
+      }
+      .onChange(of: conn.status) { _, status in
+        if status != .connected {
+          path = NavigationPath()
         }
       }
     } else {
@@ -93,9 +102,15 @@ struct ConnectScreen: View {
 struct HomeScreen: View {
   @EnvironmentObject var conn: ConnectionStore
   @EnvironmentObject var store: SessionStore
+  @State private var searchText = ""
 
   var body: some View {
     VStack(spacing: 0) {
+      TextField("搜索会话", text: $searchText)
+        .textFieldStyle(.roundedBorder)
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+
       // Logo 区
       Text("OpenCode")
         .font(.system(size: 56, weight: .bold, design: .rounded))
@@ -131,6 +146,7 @@ struct HomeScreen: View {
       if store.sessions.isEmpty { await store.refreshSessions() }
     }
     .onAppear { store.subscribeToEvents() }
+    .onDisappear { store.unsubscribeEvents() }
   }
 
   // 对齐 home.tsx empty state
@@ -154,10 +170,7 @@ struct HomeScreen: View {
     ScrollView {
       LazyVStack(spacing: 0) {
         ForEach(store.sessions.prefix(20)) { session in
-          NavigationLink {
-            ChatScreen()
-              .task { await store.selectSession(session.id) }
-          } label: {
+          NavigationLink(value: session.id) {
             HStack {
               VStack(alignment: .leading, spacing: 2) {
                 Text(session.title)
@@ -190,6 +203,27 @@ struct ChatScreen: View {
   @EnvironmentObject var store: SessionStore
   @State private var input = ""
   @FocusState private var focused: Bool
+
+  enum ActiveSheet: Identifiable {
+    case permission(PermissionRequest)
+    case question(InteractQuestion)
+    var id: String {
+      switch self {
+      case .permission(let r): return "perm-\(r.id)"
+      case .question(let q): return "q-\(q.id)"
+      }
+    }
+  }
+
+  private var activeSheet: ActiveSheet? {
+    if let perm = store.pendingPermissions.first {
+      return .permission(perm)
+    }
+    if let question = store.activeQuestions.first {
+      return .question(question)
+    }
+    return nil
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -273,8 +307,28 @@ struct ChatScreen: View {
           .lineLimit(1)
       }
     }
-    .onAppear { store.subscribeToEvents() }
-    .onDisappear { store.unsubscribeEvents() }
+    .onDisappear {
+      store.selectedSession = nil
+    }
+    .sheet(item: Binding<ActiveSheet?>(
+      get: {
+        if let perm = store.pendingPermissions.first { return .permission(perm) }
+        if let q = store.activeQuestions.first { return .question(q) }
+        return nil
+      },
+      set: { _ in }
+    )) { sheet in
+      switch sheet {
+      case .permission(let request):
+        PermissionSheet(request: request) { reply in
+          Task { await store.replyPermission(requestID: request.id, reply: reply) }
+        }
+      case .question(let question):
+        QuestionSheet(question: question) { answer in
+          store.respondToQuestion(questionID: question.id, answer: answer)
+        }
+      }
+    }
   }
 
   private func statusIcon(_ status: String) -> some View {
