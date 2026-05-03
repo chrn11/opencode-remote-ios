@@ -270,7 +270,6 @@ actor OpenCodeAPIClient {
     return try decoder.decode(GlobalConfig.self, from: data)
   }
 }
-}
 
 // MARK: - 临时类型（不依赖外部模块）
 
@@ -302,7 +301,7 @@ struct GlobalConfig: Codable, Sendable {
   let agent: [String: AgentConfig]?
   let plugin: [String]?
   let mcp: [String: MCPConfig]?
-  let default: [String: String]?
+  let `default`: [String: String]?
   let connected: [String]?
 
   struct AgentConfig: Codable, Sendable {
@@ -337,4 +336,18 @@ struct ModelInfo: Codable, Sendable {
   let defaultMaxTokens: Int?
   let canReason: Bool?
   let supportsAttachments: Bool?
+}
+
+private struct AnyEncodable: Encodable {
+  private let encodeImpl: (Encoder) throws -> Void
+
+  init(_ value: any Encodable) {
+    self.encodeImpl = { encoder in
+      try value.encode(to: encoder)
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    try encodeImpl(encoder)
+  }
 }
