@@ -8,8 +8,8 @@ struct QuestionSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          if let header = question.header {
-            Text(header)
+          if !question.header.isEmpty {
+            Text(question.header)
               .font(.subheadline)
               .foregroundColor(.secondary)
           }

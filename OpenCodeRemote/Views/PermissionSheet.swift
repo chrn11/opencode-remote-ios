@@ -23,7 +23,7 @@ struct PermissionSheet: View {
           Text(request.permission)
             .font(.title2.bold())
           
-          if let metadata = request.metadata, let desc = metadata["description"] as? String {
+          if let desc = request.description {
             Text(desc)
               .font(.subheadline)
               .foregroundColor(.secondary)
@@ -55,11 +55,11 @@ struct PermissionSheet: View {
             }
           }
           
-          if let patterns = request.patterns, !patterns.isEmpty {
+          if !request.patterns.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
               Label("匹配模式", systemImage: "magnifyingglass")
                 .font(.subheadline.bold())
-              ForEach(patterns, id: \.self) { pattern in
+              ForEach(request.patterns, id: \.self) { pattern in
                 Text("• \(pattern)")
                   .font(.caption.monospaced())
               }

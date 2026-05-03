@@ -233,7 +233,7 @@ final class SessionStore: ObservableObject {
     case .sessionDeleted(let id, _):
       sessions.removeAll { $0.id == id }
 
-    case .messageUpdated(let sid, let info):
+    case .messageUpdated(_, let info):
       if let idx = messages.firstIndex(where: { $0.id == info.id }) {
         // 保留现有 parts，更新 info
         messages[idx] = MessageWithParts(info: info, parts: messages[idx].parts)
@@ -241,10 +241,10 @@ final class SessionStore: ObservableObject {
         messages.append(MessageWithParts(info: info, parts: []))
       }
 
-    case .messageRemoved(let sid, let msgID):
+    case .messageRemoved(_, let msgID):
       messages.removeAll { $0.id == msgID }
 
-    case .messagePartUpdated(let sid, let part):
+    case .messagePartUpdated(_, let part):
       // 通过 part 中内嵌的 messageID 定位消息，update 或 append
       let msgID: MessageID
       let partID: PartID
