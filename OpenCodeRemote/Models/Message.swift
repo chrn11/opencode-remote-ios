@@ -136,6 +136,27 @@ extension MessageWithParts {
     case .assistant(let value): return value.role
     }
   }
+
+  var agentName: String? {
+    switch info {
+    case .user(let info): return info.agent
+    case .assistant(let info): return info.agent
+    }
+  }
+
+  var modelDisplay: String? {
+    switch info {
+    case .user(let info): return "\(info.model.providerID)/\(info.model.modelID)"
+    case .assistant(let info): return "\(info.providerID)/\(info.modelID)"
+    }
+  }
+
+  var variantName: String? {
+    switch info {
+    case .user(let info): return info.variant
+    case .assistant(let info): return info.variant
+    }
+  }
 }
 
 extension MessageInfo {

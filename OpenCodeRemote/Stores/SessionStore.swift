@@ -27,6 +27,12 @@ final class SessionStore: ObservableObject {
   @Published var pendingPermissions: [PermissionRequest] = []
   @Published var activeQuestions: [InteractQuestion] = []
 
+  // 当前会话配置（用户可覆盖，发送消息时携带）
+  @Published var reasoningEffort: String = "medium" // low / medium / high
+  @Published var activeAgent: String = "coder"
+  @Published var activeModel: String = ""
+  @Published var activeVariant: String = ""
+
   private let apiClient: OpenCodeAPIClient
   private let eventStreamClient: EventStreamClient
   private let connectionStore: ConnectionStore
@@ -105,7 +111,13 @@ final class SessionStore: ObservableObject {
     error = nil
     do {
       let requestID = UUID().uuidString
-      try await apiClient.sendPromptAsync(sessionId: sid, text: text, requestId: requestID)
+      try await apiClient.sendPromptAsync(
+        sessionId: sid, text: text, requestId: requestID,
+        reasoningEffort: reasoningEffort,
+        agent: activeAgent.isEmpty ? nil : activeAgent,
+        model: activeModel.isEmpty ? nil : activeModel,
+        variant: activeVariant.isEmpty ? nil : activeVariant
+      )
     } catch {
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }

@@ -243,6 +243,7 @@ struct ChatScreen: View {
   @State private var input = ""
   @State private var isLoadingMore = false
   @FocusState private var focused: Bool
+  @State private var showConfigSheet = false
 
   enum ActiveSheet: Identifiable {
     case permission(PermissionRequest)
@@ -301,6 +302,15 @@ struct ChatScreen: View {
             }
           }
         }
+        .task {
+          // 打开会话后滚动到最底部
+          try? await Task.sleep(nanoseconds: 300_000_000)
+          withAnimation {
+            if let last = store.messages.last {
+              proxy.scrollTo(last.id, anchor: .bottom)
+            }
+          }
+        }
         .onChange(of: store.messages.count) { _ in
           if !store.messages.isEmpty {
             proxy.scrollTo(store.messages.last!.id, anchor: .bottom)
@@ -320,6 +330,19 @@ struct ChatScreen: View {
               .font(.caption)
               .foregroundColor(.secondary)
             Spacer()
+            // Thinking Level 选择器
+            HStack(spacing: 4) {
+              Image(systemName: "brain.head.profile")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+              Picker("思考程度", selection: $store.reasoningEffort) {
+                Text("低").tag("low")
+                Text("中").tag("medium")
+                Text("高").tag("high")
+              }
+              .pickerStyle(.segmented)
+              .frame(width: 120)
+            }
             if store.isSelectedSessionRunning {
               Button { Task { await store.abort() } } label: {
                 Image(systemName: "stop.circle.fill")
@@ -330,6 +353,40 @@ struct ChatScreen: View {
           }
           .padding(.horizontal, 16)
         }
+
+        // 紧凑配置摘要（点击展开 Sheet）
+        Button { showConfigSheet = true } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "gearshape.fill")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+            Text(store.activeAgent)
+              .font(.caption2)
+              .foregroundColor(.secondary)
+            if !store.activeModel.isEmpty {
+              Text("·")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+              Text(store.activeModel)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            }
+            if !store.activeVariant.isEmpty {
+              Text("·")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+              Text(store.activeVariant)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            }
+            Image(systemName: "chevron.up")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+          }
+          .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
 
         // 输入框
         HStack(spacing: 8) {
@@ -360,9 +417,35 @@ struct ChatScreen: View {
     }
     .toolbar {
       ToolbarItem(placement: .principal) {
-        Text(store.selectedSession?.title ?? "会话")
-          .font(.headline)
-          .lineLimit(1)
+        VStack(spacing: 2) {
+          Text(store.selectedSession?.title ?? "会话")
+            .font(.headline)
+            .lineLimit(1)
+          if let last = store.messages.last, let agent = last.agentName, let model = last.modelDisplay {
+            HStack(spacing: 4) {
+              Text(agent)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundColor(.accentColor)
+              Text("·")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+              Text(model)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+              if let variant = last.variantName {
+                Text("·")
+                  .font(.caption2)
+                  .foregroundColor(.secondary)
+                Text(variant)
+                  .font(.caption2)
+                  .foregroundColor(.secondary)
+                  .italic()
+              }
+            }
+          }
+        }
       }
     }
     .onDisappear {
@@ -386,6 +469,9 @@ struct ChatScreen: View {
           store.respondToQuestion(questionID: question.id, answer: answer)
         }
       }
+    .sheet(isPresented: $showConfigSheet) {
+      ConfigSheet()
+        .environmentObject(store)
     }
   }
 
@@ -450,16 +536,31 @@ struct MessageRow: View {
   private func partView(_ p: Part) -> some View {
     switch p {
     case .text(let t):
-      Text(t.text)
+      Text(MarkdownRenderer.render(t.text))
         .textSelection(.enabled)
 
     case .reasoning(let r):
       DisclosureGroup("思考过程") {
-        Text(r.text)
+        Text(MarkdownRenderer.render(r.text))
           .font(.caption)
-          .textSelection(.enabled)
+          .italic()
+          .foregroundColor(.secondary)
+          .padding(.leading, 8)
+          .padding(.vertical, 4)
       }
       .font(.caption)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(Color(.systemGray5))
+      .overlay(
+        Rectangle()
+          .fill(Color.accentColor)
+          .frame(width: 3)
+          .padding(.vertical, 0)
+        , alignment: .leading
+      )
+      .cornerRadius(8)
+      .padding(.leading, 2)
 
     case .tool(let t):
       toolCallView(t)
@@ -635,6 +736,65 @@ struct MessageRow: View {
   /// 检测输出是否包含 unified diff 格式
   private func looksLikeDiff(_ text: String) -> Bool {
     text.contains("@@ -") && text.contains("+") && text.contains("-")
+  }
+}
+
+// MARK: - 配置面板（对齐 OpenCode TUI 的 DialogModel/DialogAgent/DialogVariant）
+
+struct ConfigSheet: View {
+  @EnvironmentObject var store: SessionStore
+  @Environment(\.dismiss) private var dismiss
+
+  let agents = ["coder", "summarizer", "task", "title"]
+
+  var body: some View {
+    NavigationView {
+      Form {
+        Section("Agent") {
+          Picker("Agent", selection: $store.activeAgent) {
+            ForEach(agents, id: \.self) { agent in
+              Text(agent).tag(agent)
+            }
+          }
+          .pickerStyle(.inline)
+        }
+
+        Section("模型") {
+          TextField("provider/model", text: $store.activeModel)
+            .keyboardType(.asciiCapable)
+          if store.activeModel.isEmpty {
+            Text("留空使用服务器默认模型")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+          }
+        }
+
+        Section("变体") {
+          TextField("留空表示默认", text: $store.activeVariant)
+          if store.activeVariant.isEmpty {
+            Text("留空使用服务器默认变体")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+          }
+        }
+
+        Section("思考程度") {
+          Picker("思考程度", selection: $store.reasoningEffort) {
+            Text("低").tag("low")
+            Text("中").tag("medium")
+            Text("高").tag("high")
+          }
+          .pickerStyle(.segmented)
+        }
+      }
+      .navigationTitle("发送配置")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) {
+          Button("完成") { dismiss() }
+        }
+      }
+    }
   }
 }
 

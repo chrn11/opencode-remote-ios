@@ -190,10 +190,31 @@ actor OpenCodeAPIClient {
 
   /// 异步发送 Prompt，服务端返回 204
   /// 使用 parts 数组格式对齐真实 OpenCode API
-  func sendPromptAsync(sessionId: String, text: String, requestId: String) async throws {
-    let body = [["type": "text", "text": text]]
-    let request = try makeRequest("session/\(sessionId)/prompt_async", method: "POST",
-      body: CodableValue.array(body.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) }))
+  func sendPromptAsync(
+    sessionId: String, text: String, requestId: String,
+    reasoningEffort: String? = nil,
+    agent: String? = nil,
+    model: String? = nil,
+    variant: String? = nil
+  ) async throws {
+    var parts: [[String: String]] = [["type": "text", "text": text]]
+    var body: [String: CodableValue] = [
+      "parts": CodableValue.array(parts.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) }),
+      "request_id": CodableValue.string(requestId)
+    ]
+    if let reasoningEffort {
+      body["reasoning_effort"] = CodableValue.string(reasoningEffort)
+    }
+    if let agent, !agent.isEmpty {
+      body["agent"] = CodableValue.string(agent)
+    }
+    if let model, !model.isEmpty {
+      body["model"] = CodableValue.string(model)
+    }
+    if let variant, !variant.isEmpty {
+      body["variant"] = CodableValue.string(variant)
+    }
+    let request = try makeRequest("session/\(sessionId)/prompt_async", method: "POST", body: CodableValue.object(body))
     let (data, response) = try await session.data(for: request)
     try HTTPValidator.validate(response, data: data, expectedStatus: 204)
   }
