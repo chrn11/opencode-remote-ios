@@ -104,6 +104,7 @@ struct HomeScreen: View {
   @EnvironmentObject var store: SessionStore
   @Binding var path: NavigationPath
   @State private var searchText = ""
+  @State private var showSettings = false
 
   /// 过滤后的会话列表
   private var filteredSessions: [SessionInfo] {
@@ -128,17 +129,13 @@ struct HomeScreen: View {
         .padding(.top, 80)
 
       // 服务器状态
-      Button {
-        // 服务器选择器（暂未实现）
-      } label: {
-        HStack(spacing: 6) {
-          Circle()
-            .fill(conn.status == .connected ? Color.green : Color.gray)
-            .frame(width: 8, height: 8)
-          Text(conn.serverInfo?.url ?? conn.serverURL)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
+      HStack(spacing: 6) {
+        Circle()
+          .fill(conn.status == .connected ? Color.green : Color.gray)
+          .frame(width: 8, height: 8)
+        Text(conn.serverInfo?.url ?? conn.serverURL)
+          .font(.caption)
+          .foregroundColor(.secondary)
       }
       .padding(.top, 8)
 
@@ -158,6 +155,13 @@ struct HomeScreen: View {
     .onAppear { store.subscribeToEvents() }
     .onDisappear { store.unsubscribeEvents() }
     .toolbar {
+      ToolbarItem(placement: .navigationBarLeading) {
+        Button {
+          showSettings = true
+        } label: {
+          Image(systemName: AppIcons.settings)
+        }
+      }
       ToolbarItem(placement: .navigationBarTrailing) {
         Button {
           Task {
@@ -169,6 +173,9 @@ struct HomeScreen: View {
           Image(systemName: "plus.circle.fill")
         }
       }
+    }
+    .sheet(isPresented: $showSettings) {
+      SettingsScreen()
     }
     .navigationTitle("OpenCode")
     .navigationBarTitleDisplayMode(.inline)
@@ -586,10 +593,14 @@ struct MessageRow: View {
       }
 
       if case .completed(let s) = t.state, !s.output.isEmpty {
-        Text(s.output)
-          .font(.caption2.monospaced())
-          .lineLimit(8)
-          .textSelection(.enabled)
+        if looksLikeDiff(s.output) {
+          DiffView(text: s.output)
+        } else {
+          Text(s.output)
+            .font(.caption2.monospaced())
+            .lineLimit(8)
+            .textSelection(.enabled)
+        }
       }
       if case .error(let s) = t.state {
         Text(s.error)
@@ -619,6 +630,11 @@ struct MessageRow: View {
       default: return nil
       }
     }.joined(separator: "\n").nilIfEmpty
+  }
+
+  /// 检测输出是否包含 unified diff 格式
+  private func looksLikeDiff(_ text: String) -> Bool {
+    text.contains("@@ -") && text.contains("+") && text.contains("-")
   }
 }
 

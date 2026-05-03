@@ -41,6 +41,14 @@ extension SessionInfo: Hashable {
   }
 }
 
+/// 创建会话请求体
+struct SessionCreateInput: Codable, Sendable {
+  let parentID: String?
+  let title: String?
+  let permission: [PermissionRule]?
+  let workspaceID: String?
+}
+
 /// 会话统计摘要
 struct SessionSummary: Codable, Sendable {
   let additions: Int

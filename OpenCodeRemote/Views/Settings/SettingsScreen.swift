@@ -1,21 +1,38 @@
-// OpenCodeRemote - 设置页面
+// OpenCode Remote - 设置页面
+// 服务器信息、连接管理、调试日志、关于
 // 创建时间：2026-04-29
 
 import SwiftUI
 
-/// 设置页面（占位，后续扩展）
+/// 设置页面
 struct SettingsScreen: View {
+  @EnvironmentObject var conn: ConnectionStore
+  @EnvironmentObject var store: SessionStore
+  @State private var showDisconnectConfirm = false
+
   var body: some View {
     NavigationStack {
       List {
+        // 服务器信息
+        Section("服务器") {
+          LabeledContent("地址", value: conn.serverURL)
+          LabeledContent("状态", value: statusText)
+          if let info = conn.serverInfo {
+            LabeledContent("版本", value: info.version)
+          }
+        }
+
+        // 连接管理
         Section("连接") {
-          Label("Tailscale 连接提示", systemImage: "point.3.connected.trianglepath.dotted")
-            .font(AppTypography.body)
+          Button(role: .destructive) {
+            showDisconnectConfirm = true
+          } label: {
+            Label("断开连接", systemImage: AppIcons.disconnect)
+          }
+          .disabled(conn.status != .connected)
         }
-        Section("通知") {
-          Label("未配置通知渠道", systemImage: "bell.slash")
-            .foregroundColor(.secondary)
-        }
+
+        // 调试
         Section("调试") {
           NavigationLink {
             DebugLogScreen()
@@ -23,12 +40,33 @@ struct SettingsScreen: View {
             Label("调试日志", systemImage: AppIcons.debug)
           }
         }
+
+        // 关于
         Section("关于") {
-          Label("OpenCode Remote v0.1.0", systemImage: "info.circle")
-            .foregroundColor(.secondary)
+          LabeledContent("应用", value: "OpenCode Remote")
+          LabeledContent("版本", value: "1.0.0")
+          if let url = URL(string: "https://github.com/chrn11/opencode-remote-ios") {
+            Link("GitHub 仓库", destination: url)
+          }
         }
       }
       .navigationTitle("设置")
+      .confirmationDialog("确认断开连接？", isPresented: $showDisconnectConfirm) {
+        Button("断开", role: .destructive) {
+          store.unsubscribeEvents()
+          conn.disconnect()
+        }
+        Button("取消", role: .cancel) {}
+      }
+    }
+  }
+
+  private var statusText: String {
+    switch conn.status {
+    case .connected: return "已连接"
+    case .connecting: return "连接中"
+    case .disconnected: return "未连接"
+    case .error: return "连接失败"
     }
   }
 }
