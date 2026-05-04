@@ -299,11 +299,15 @@ actor OpenCodeAPIClient {
   // MARK: - 获取 Agent 列表
 
   /// 获取可用 Agent 列表（GET /agent）
+  /// 服务端返回 camelCase JSON，使用独立 decoder 避免 snake_case 转换冲突
   func fetchAgents() async throws -> [AgentInfo] {
     let request = try makeRequest("agent")
     let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decodeResponse([AgentInfo].self, from: data)
+    // Agent 端点返回 camelCase JSON，需要用不带 snake_case 策略的 decoder
+    let camelDecoder = JSONDecoder()
+    camelDecoder.dateDecodingStrategy = .iso8601
+    return try camelDecoder.decode([AgentInfo].self, from: data)
   }
 
   // MARK: - 获取可用模型列表
@@ -478,7 +482,7 @@ struct ModelProviderMeta: Codable, Sendable {
 
 // MARK: - Agent 信息
 
-/// Agent 信息（对齐 OpenCode Agent.Info schema）
+/// Agent 信息（对齐 OpenCode Agent.Info schema，camelCase 解码）
 struct AgentInfo: Codable, Identifiable, Sendable {
   let name: String
   let description: String?
@@ -492,6 +496,8 @@ struct AgentInfo: Codable, Identifiable, Sendable {
   let variant: String?
   let prompt: String?
   let steps: Int?
+  let permission: [AgentPermissionRule]?
+  let options: [String: CodableValue]?
 
   var id: String { name }
 
@@ -499,6 +505,13 @@ struct AgentInfo: Codable, Identifiable, Sendable {
   var visibleInBar: Bool {
     hidden != true && mode != "subagent"
   }
+}
+
+/// Agent 权限规则（对齐 OpenCode Permission.Ruleset 中的单项）
+struct AgentPermissionRule: Codable, Sendable {
+  let permission: String?
+  let action: String?
+  let pattern: String?
 }
 
 struct AgentModelRef: Codable, Sendable {
