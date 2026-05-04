@@ -40,6 +40,9 @@ final class SessionStore: ObservableObject {
   @Published var globalConfig: GlobalConfig?
   @Published var providerLoadError: String?
 
+  // 可用 Agent 列表（从服务器 /agent 端点获取）
+  @Published var agents: [AgentInfo] = []
+
   private let apiClient: OpenCodeAPIClient
   private let eventStreamClient: EventStreamClient
   private let connectionStore: ConnectionStore
@@ -93,8 +96,9 @@ final class SessionStore: ObservableObject {
     do {
       async let providerResponse = apiClient.fetchProviders()
       async let configResponse = apiClient.fetchGlobalConfig()
+      async let agentResponse = apiClient.fetchAgents()
 
-      let (catalog, config) = try await (providerResponse, configResponse)
+      let (catalog, config, agentList) = try await (providerResponse, configResponse, agentResponse)
       providers = catalog.all.sorted { lhs, rhs in
         let lhsConnected = catalog.connected.contains(lhs.id)
         let rhsConnected = catalog.connected.contains(rhs.id)
@@ -106,6 +110,7 @@ final class SessionStore: ObservableObject {
       providerDefaults = catalog.defaultModels
       connectedProviderIDs = Set(catalog.connected)
       globalConfig = config
+      agents = agentList.filter { $0.visibleInBar }
       providerLoadError = nil
       normalizeActiveSelections()
     } catch {
@@ -375,32 +380,48 @@ extension SessionStore {
   }
 
   var currentModelSupportsReasoning: Bool {
-    // 1. 服务器显式标记支持推理
+    // 1. 检查模型 variants 字段（非空 = 支持推理变体）
+    if let variants = selectedModelInfo?.variants, !variants.isEmpty {
+      return true
+    }
+    // 2. 服务器显式标记支持推理
     if selectedModelInfo?.supportsReasoning == true {
       return true
     }
     let normalized = activeModel.lowercased()
-    // 2. 排除已知不支持推理的模型类型
+    // 3. 排除已知不支持推理的模型类型
     if normalized.contains("embed") || normalized.contains("whisper") || normalized.contains("tts") {
       return false
     }
-    // 3. 模型名包含推理相关关键词
+    // 4. 模型名包含推理相关关键词
     if normalized.contains("reasoning") || normalized.contains("thinking") || normalized.contains("r1") {
       return true
     }
-    // 4. 默认：不假设模型支持推理
+    // 5. 默认：不假设模型支持推理
     return false
   }
 
-  /// 可用 Agent 列表（从全局配置读取）
-  var availableAgents: [String] {
-    guard let agentMap = globalConfig?.agent else { return [] }
-    return Array(agentMap.keys).sorted()
+  /// 可用 Agent 列表（从 /agent 端点获取，已过滤 hidden/subagent）
+  var availableAgents: [AgentInfo] {
+    agents.sorted { lhs, rhs in
+      // 默认 agent 排最前
+      let lhsIsDefault = lhs.name == (globalConfig?.defaultAgent ?? "build")
+      let rhsIsDefault = rhs.name == (globalConfig?.defaultAgent ?? "build")
+      if lhsIsDefault != rhsIsDefault { return lhsIsDefault }
+      return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
   }
 
   /// 当前 Agent 显示名称
   var activeAgentDisplayName: String {
-    activeAgent.isEmpty ? (globalConfig?.defaultAgent ?? "默认") : activeAgent
+    if !activeAgent.isEmpty {
+      // 尝试从 agents 列表查找描述名
+      if let agent = agents.first(where: { $0.name == activeAgent }) {
+        return agent.name
+      }
+      return activeAgent
+    }
+    return globalConfig?.defaultAgent ?? "build"
   }
 
   var currentModelSupportsAttachments: Bool {

@@ -395,18 +395,29 @@ struct ChatScreen: View {
           // Agent 选择器
           Menu {
             if !store.availableAgents.isEmpty {
-              ForEach(store.availableAgents, id: \.self) { agent in
-                Button(agent) { store.activeAgent = agent }
+              ForEach(store.availableAgents) { agent in
+                Button {
+                  store.activeAgent = agent.name
+                } label: {
+                  HStack {
+                    Text(agent.name)
+                    if let desc = agent.description, !desc.isEmpty {
+                      Text("— \(desc)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    }
+                  }
+                }
               }
             } else {
-              Text("无可用 Agent")
+              Text("加载中…")
             }
           } label: {
             HStack(spacing: 4) {
               Image(systemName: "person.crop.circle")
                 .font(.caption2)
                 .foregroundColor(.accentColor)
-              Text(store.activeAgent.isEmpty ? "Sisyphus" : store.activeAgent)
+              Text(store.activeAgentDisplayName)
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -789,10 +800,7 @@ struct MessageRow: View {
         .font(.caption2)
         .foregroundColor(.secondary)
         .italic()
-
-    default:
-      EmptyView()
-    }
+  }
   }
 
   @ViewBuilder

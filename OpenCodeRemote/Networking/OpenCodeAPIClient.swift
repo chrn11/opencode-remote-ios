@@ -296,6 +296,16 @@ actor OpenCodeAPIClient {
     try HTTPValidator.validate(response, data: data)
   }
 
+  // MARK: - 获取 Agent 列表
+
+  /// 获取可用 Agent 列表（GET /agent）
+  func fetchAgents() async throws -> [AgentInfo] {
+    let request = try makeRequest("agent")
+    let (data, response) = try await performData(for: request)
+    try HTTPValidator.validate(response, data: data)
+    return try decodeResponse([AgentInfo].self, from: data)
+  }
+
   // MARK: - 获取可用模型列表
 
   /// 获取已连接的 Provider 列表及其模型
@@ -464,6 +474,36 @@ struct ModelModalities: Codable, Sendable {
 struct ModelProviderMeta: Codable, Sendable {
   let npm: String?
   let api: String?
+}
+
+// MARK: - Agent 信息
+
+/// Agent 信息（对齐 OpenCode Agent.Info schema）
+struct AgentInfo: Codable, Identifiable, Sendable {
+  let name: String
+  let description: String?
+  let mode: String?        // "primary" | "subagent" | "all"
+  let native: Bool?
+  let hidden: Bool?
+  let topP: Double?
+  let temperature: Double?
+  let color: String?
+  let model: AgentModelRef?
+  let variant: String?
+  let prompt: String?
+  let steps: Int?
+
+  var id: String { name }
+
+  /// 是否应在底部栏显示（排除 hidden 和纯 subagent）
+  var visibleInBar: Bool {
+    hidden != true && mode != "subagent"
+  }
+}
+
+struct AgentModelRef: Codable, Sendable {
+  let providerID: String
+  let modelID: String
 }
 
 private struct AnyEncodable: Encodable {
