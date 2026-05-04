@@ -388,8 +388,19 @@ extension SessionStore {
     if normalized.contains("reasoning") || normalized.contains("thinking") || normalized.contains("r1") {
       return true
     }
-    // 4. 兜底：大多数聊天模型默认支持 reasoning_effort 参数
-    return !normalized.isEmpty
+    // 4. 默认：不假设模型支持推理
+    return false
+  }
+
+  /// 可用 Agent 列表（从全局配置读取）
+  var availableAgents: [String] {
+    guard let agentMap = globalConfig?.agent else { return [] }
+    return Array(agentMap.keys).sorted()
+  }
+
+  /// 当前 Agent 显示名称
+  var activeAgentDisplayName: String {
+    activeAgent.isEmpty ? (globalConfig?.defaultAgent ?? "默认") : activeAgent
   }
 
   var currentModelSupportsAttachments: Bool {

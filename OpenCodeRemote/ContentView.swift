@@ -390,48 +390,95 @@ struct ChatScreen: View {
           .padding(.horizontal, 16)
         }
 
-        // 紧凑配置摘要（点击展开 Sheet）
-        Button { showConfigSheet = true } label: {
-          HStack(spacing: 6) {
-            Image(systemName: "gearshape.fill")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-            Text(store.activeProviderDisplayName ?? "默认 Provider")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-              .lineLimit(1)
-            Text("/")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-            Text(store.activeModelDisplayName)
+        // 底部配置栏（对齐 OpenCode TUI 风格：Agent · Provider/Model · Thinking Level）
+        HStack(spacing: 16) {
+          // Agent 选择器
+          Menu {
+            if !store.availableAgents.isEmpty {
+              ForEach(store.availableAgents, id: \.self) { agent in
+                Button(agent) { store.activeAgent = agent }
+              }
+            } else {
+              Text("无可用 Agent")
+            }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "person.crop.circle")
+                .font(.caption2)
+                .foregroundColor(.accentColor)
+              Text(store.activeAgent.isEmpty ? "Sisyphus" : store.activeAgent)
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            if store.currentModelSupportsReasoning {
-              Image(systemName: "brain.head.profile")
+              Image(systemName: "chevron.down")
                 .font(.caption2)
-                .foregroundColor(.orange)
+                .foregroundColor(.secondary.opacity(0.6))
             }
-            if store.currentModelSupportsAttachments {
-              Image(systemName: "paperclip")
+          }
+
+          Divider().frame(height: 12)
+
+          // Provider/Model 选择器（打开配置面板）
+          Button { showConfigSheet = true } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "cpu")
                 .font(.caption2)
-                .foregroundColor(.blue)
-            }
-            if store.currentModelSupportsReasoning {
-              Text("·")
+                .foregroundColor(.accentColor)
+              Text(store.activeModelDisplayName)
                 .font(.caption2)
                 .foregroundColor(.secondary)
-              Text(store.reasoningEffort == "low" ? "低" : store.reasoningEffort == "high" ? "高" : "中")
+                .lineLimit(1)
+              Image(systemName: "chevron.up")
                 .font(.caption2)
-                .foregroundColor(.secondary)
+                .foregroundColor(.secondary.opacity(0.6))
             }
-            Image(systemName: "chevron.up")
-              .font(.caption2)
+          }
+          .buttonStyle(.plain)
+
+          Divider().frame(height: 12)
+
+          // Thinking Level 选择器（仅支持推理的模型显示）
+          if store.currentModelSupportsReasoning {
+            Menu {
+              Button("低") { store.reasoningEffort = "low" }
+              Button("中") { store.reasoningEffort = "medium" }
+              Button("高") { store.reasoningEffort = "high" }
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                  .font(.caption2)
+                  .foregroundColor(.orange)
+                Text(store.reasoningEffort == "low" ? "低" : store.reasoningEffort == "high" ? "高" : "中")
+                  .font(.caption2)
+                  .foregroundColor(.secondary)
+                Image(systemName: "chevron.down")
+                  .font(.caption2)
+                  .foregroundColor(.secondary.opacity(0.6))
+              }
+            }
+          }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+
+        // 状态行 + 中止按钮
+        if let session = store.selectedSession {
+          HStack(spacing: 6) {
+            statusIcon(store.statusForSession(session.id))
+            Text(statusText(store.statusForSession(session.id)))
+              .font(.caption)
               .foregroundColor(.secondary)
+            Spacer()
+            if store.isSelectedSessionRunning {
+              Button { Task { await store.abort() } } label: {
+                Image(systemName: "stop.circle.fill")
+                  .foregroundColor(.red)
+                  .font(.title3)
+              }
+            }
           }
           .padding(.horizontal, 16)
         }
-        .buttonStyle(.plain)
 
         // 输入框
         HStack(spacing: 8) {
