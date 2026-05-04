@@ -6,6 +6,8 @@ import Foundation
 
 /// OpenCode REST API 客户端，actor 隔离
 actor OpenCodeAPIClient {
+  static let requestTimeout: TimeInterval = 30
+
   private let session: URLSession
   private let decoder: JSONDecoder
   private let encoder: JSONEncoder
@@ -17,7 +19,7 @@ actor OpenCodeAPIClient {
 
   init() {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 30
+    config.timeoutIntervalForRequest = Self.requestTimeout
     config.timeoutIntervalForResource = 60
     config.waitsForConnectivity = true
     self.session = URLSession(configuration: config)
@@ -112,14 +114,50 @@ actor OpenCodeAPIClient {
     }
   }
 
+  private func performData(for request: URLRequest) async throws -> (Data, URLResponse) {
+    do {
+      return try await session.data(for: request)
+    } catch {
+      throw mapNetworkError(error)
+    }
+  }
+
+  private func decodeResponse<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    do {
+      return try decoder.decode(T.self, from: data)
+    } catch {
+      throw NetworkError.decodeFailed(error)
+    }
+  }
+
+  private func mapNetworkError(_ error: Error) -> NetworkError {
+    if let networkError = error as? NetworkError {
+      return networkError
+    }
+
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .timedOut:
+        return .timeout
+      case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost,
+           .notConnectedToInternet, .callIsActive, .dataNotAllowed, .internationalRoamingOff:
+        return .connectionFailed(urlError)
+      default:
+        return .connectionFailed(urlError)
+      }
+    }
+
+    return .connectionFailed(error)
+  }
+
   // MARK: - 业务端点
 
   /// 健康检查 → { healthy: true, version: "..." }
   func healthCheck() async throws -> HealthResponse {
     let request = try makeRequest("global/health")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode(HealthResponse.self, from: data)
+    return try decodeResponse(HealthResponse.self, from: data)
   }
 
   /// 获取会话列表
@@ -128,41 +166,41 @@ actor OpenCodeAPIClient {
     if let limit { items.append(URLQueryItem(name: "limit", value: "\(limit)")) }
 
     let request = try makeRequest("session", queryItems: items)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode([SessionInfo].self, from: data)
+    return try decodeResponse([SessionInfo].self, from: data)
   }
 
   /// 创建新会话
   func createSession(title: String?) async throws -> SessionDetail {
     let body = SessionCreateInput(parentID: nil, title: title, permission: nil, workspaceID: nil)
     let request = try makeRequest("session", method: "POST", body: body)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data, expectedStatus: 200)
-    return try decoder.decode(SessionDetail.self, from: data)
+    return try decodeResponse(SessionDetail.self, from: data)
   }
 
   /// 获取会话详情
   func fetchSession(_ id: String) async throws -> SessionDetail {
     let request = try makeRequest("session/\(id)")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode(SessionDetail.self, from: data)
+    return try decodeResponse(SessionDetail.self, from: data)
   }
 
   /// 删除会话
   func deleteSession(_ id: String) async throws {
     let request = try makeRequest("session/\(id)", method: "DELETE")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
   }
 
   /// 获取会话状态映射
   func fetchSessionStatus() async throws -> [String: SessionStatusInfo] {
     let request = try makeRequest("session/status")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode([String: SessionStatusInfo].self, from: data)
+    return try decodeResponse([String: SessionStatusInfo].self, from: data)
   }
 
   /// 获取会话消息列表（支持分页）
@@ -171,10 +209,10 @@ actor OpenCodeAPIClient {
     if let before { items.append(URLQueryItem(name: "before", value: before)) }
 
     let request = try makeRequest("session/\(sessionId)/message", queryItems: items)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
 
-    let messages = try decoder.decode([Message].self, from: data)
+    let messages = try decodeResponse([Message].self, from: data)
     let nextCursor = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "X-Next-Cursor")
     return (messages, nextCursor)
   }
@@ -183,9 +221,9 @@ actor OpenCodeAPIClient {
   func sendPrompt(sessionId: String, message: String, requestId: String) async throws -> Message {
     let body = PromptRequest(message: message, requestId: requestId, attachments: nil)
     let request = try makeRequest("session/\(sessionId)/message", method: "POST", body: body)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode(Message.self, from: data)
+    return try decodeResponse(Message.self, from: data)
   }
 
   /// 异步发送 Prompt，服务端返回 204
@@ -215,16 +253,16 @@ actor OpenCodeAPIClient {
       body["variant"] = CodableValue.string(variant)
     }
     let request = try makeRequest("session/\(sessionId)/prompt_async", method: "POST", body: CodableValue.object(body))
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data, expectedStatus: 204)
   }
 
   /// 中止运行中的任务
   func abort(sessionId: String) async throws -> Bool {
     let request = try makeRequest("session/\(sessionId)/abort", method: "POST")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    let result = try decoder.decode([String: Bool].self, from: data)
+    let result = try decodeResponse([String: Bool].self, from: data)
     return result["aborted"] ?? false
   }
 
@@ -232,42 +270,42 @@ actor OpenCodeAPIClient {
   func respondToPermission(sessionId: String, permissionId: String, action: PermissionAction, reason: String? = nil) async throws -> PermissionResult {
     let body = PermissionResponse(action: action, reason: reason)
     let request = try makeRequest("session/\(sessionId)/permissions/\(permissionId)", method: "POST", body: body)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode(PermissionResult.self, from: data)
+    return try decodeResponse(PermissionResult.self, from: data)
   }
 
   /// 获取独立权限请求列表
   func fetchPermissions() async throws -> [PermissionRequest] {
     let request = try makeRequest("permission")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode([PermissionRequest].self, from: data)
+    return try decodeResponse([PermissionRequest].self, from: data)
   }
 
   /// 回复独立权限请求
   func replyPermission(requestID: String, body: PermissionReplyBody) async throws {
     let request = try makeRequest("permission/\(requestID)/reply", method: "POST", body: body)
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
   }
 
   // MARK: - 获取可用模型列表
 
   /// 获取已连接的 Provider 列表及其模型
-  func fetchProviders() async throws -> [ProviderInfo] {
+  func fetchProviders() async throws -> ProviderListResponse {
     let request = try makeRequest("provider")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode([ProviderInfo].self, from: data)
+    return try decodeResponse(ProviderListResponse.self, from: data)
   }
 
   /// 获取全局配置（含默认模型、agent 等）
   func fetchGlobalConfig() async throws -> GlobalConfig {
     let request = try makeRequest("global/config")
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await performData(for: request)
     try HTTPValidator.validate(response, data: data)
-    return try decoder.decode(GlobalConfig.self, from: data)
+    return try decodeResponse(GlobalConfig.self, from: data)
   }
 }
 
@@ -280,6 +318,21 @@ struct HealthResponse: Codable, Sendable {
 
 struct SessionStatusInfo: Codable, Sendable {
   let status: String
+  let message: String?
+
+  init(status: String, message: String? = nil) {
+    self.status = status
+    self.message = message
+  }
+
+  var normalizedStatus: String {
+    switch status {
+    case "idle", "running", "thinking", "error", "retry":
+      return status
+    default:
+      return "idle"
+    }
+  }
 }
 
 struct PromptRequest: Codable, Sendable {
@@ -298,44 +351,113 @@ struct PermissionResponse: Codable, Sendable {
 struct GlobalConfig: Codable, Sendable {
   let model: String?
   let smallModel: String?
-  let agent: [String: AgentConfig]?
-  let plugin: [String]?
-  let mcp: [String: MCPConfig]?
+  let defaultAgent: String?
+  let agent: [String: CodableValue]?
+  let provider: [String: CodableValue]?
+  let plugin: CodableValue?
+  let mcp: [String: CodableValue]?
   let `default`: [String: String]?
   let connected: [String]?
-
-  struct AgentConfig: Codable, Sendable {
-    let prompt: String?
-    let options: String?
-    let permission: String?
-  }
-
-  struct MCPConfig: Codable, Sendable {
-    let type: String?
-    let command: String?
-    let environment: [String: String]?
-  }
 }
 
 // MARK: - Provider 信息
 
+struct ProviderListResponse: Codable, Sendable {
+  let all: [ProviderInfo]
+  let defaultModels: [String: String]
+  let connected: [String]
+
+  private enum CodingKeys: String, CodingKey {
+    case all
+    case defaultModels = "default"
+    case connected
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    all = try container.decodeIfPresent([ProviderInfo].self, forKey: .all) ?? []
+    connected = try container.decodeIfPresent([String].self, forKey: .connected) ?? []
+
+    if let mapping = try? container.decode([String: String].self, forKey: .defaultModels) {
+      defaultModels = mapping
+    } else if let modelIDs = try? container.decode([String].self, forKey: .defaultModels) {
+      defaultModels = Dictionary(uniqueKeysWithValues: modelIDs.map { ($0, $0) })
+    } else {
+      defaultModels = [:]
+    }
+  }
+}
+
 struct ProviderInfo: Codable, Identifiable, Sendable {
   let id: String
   let name: String
-  let source: String
-  let env: String
-  let options: String?
+  let source: String?
+  let env: [String]
+  let api: String?
+  let npm: String?
+  let key: String?
+  let options: [String: CodableValue]?
   let models: [String: ModelInfo]
+
+  var sortedModels: [(id: String, info: ModelInfo)] {
+    models
+      .map { ($0.key, $0.value) }
+      .sorted { lhs, rhs in
+        lhs.info.displayName.localizedCaseInsensitiveCompare(rhs.info.displayName) == .orderedAscending
+      }
+  }
 }
 
 struct ModelInfo: Codable, Sendable {
+  let id: String?
   let name: String?
-  let contextWindow: Int?
-  let costPer1MIn: Double?
-  let costPer1MOut: Double?
-  let defaultMaxTokens: Int?
-  let canReason: Bool?
-  let supportsAttachments: Bool?
+  let family: String?
+  let releaseDate: String?
+  let attachment: Bool?
+  let reasoning: Bool?
+  let temperature: Bool?
+  let toolCall: Bool?
+  let interleaved: CodableValue?
+  let cost: ModelCost?
+  let limit: ModelLimit?
+  let modalities: ModelModalities?
+  let experimental: Bool?
+  let status: String?
+  let provider: ModelProviderMeta?
+  let options: [String: CodableValue]?
+  let headers: [String: String]?
+  let variants: [String: [String: CodableValue]]?
+
+  var displayName: String { name ?? id ?? "未命名模型" }
+  var supportsReasoning: Bool { reasoning == true }
+  var supportsAttachments: Bool { attachment == true }
+  var contextWindow: Int? { limit?.context }
+  var defaultMaxTokens: Int? { limit?.output }
+  var costPer1MIn: Double? { cost?.input }
+  var costPer1MOut: Double? { cost?.output }
+}
+
+struct ModelCost: Codable, Sendable {
+  let input: Double?
+  let output: Double?
+  let cacheRead: Double?
+  let cacheWrite: Double?
+}
+
+struct ModelLimit: Codable, Sendable {
+  let context: Int?
+  let input: Int?
+  let output: Int?
+}
+
+struct ModelModalities: Codable, Sendable {
+  let input: [String]?
+  let output: [String]?
+}
+
+struct ModelProviderMeta: Codable, Sendable {
+  let npm: String?
+  let api: String?
 }
 
 private struct AnyEncodable: Encodable {

@@ -97,6 +97,7 @@ enum SessionStatus: String, Codable, Sendable {
   case running
   case thinking
   case error
+  case retry
   case unknown
 
   var iconName: String {
@@ -105,6 +106,7 @@ enum SessionStatus: String, Codable, Sendable {
     case .running: return "play.circle.fill"
     case .thinking: return "brain.head.profile"
     case .error: return "exclamationmark.triangle.fill"
+    case .retry: return "arrow.clockwise.circle.fill"
     case .unknown: return "questionmark.circle"
     }
   }
@@ -115,6 +117,7 @@ enum SessionStatus: String, Codable, Sendable {
     case .running: return "运行中"
     case .thinking: return "思考中"
     case .error: return "错误"
+    case .retry: return "重试中"
     case .unknown: return "未知"
     }
   }

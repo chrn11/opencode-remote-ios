@@ -24,6 +24,7 @@ enum SSEEvent: Sendable {
 
   case sessionCreated(sessionID: String, info: SessionInfo)
   case sessionUpdated(sessionID: String, info: SessionInfo)
+  case sessionStatusUpdated(sessionID: String, status: SessionStatusInfo)
   case sessionDeleted(sessionID: String, info: SessionInfo)
 
   case messageUpdated(sessionID: String, info: MessageInfo)
@@ -73,6 +74,11 @@ actor SSEEventParser {
             let info = decode(SessionInfo.self, envelope.properties?["info"]) else { return nil }
       return .sessionUpdated(sessionID: sid, info: info)
 
+    case "session.status.updated":
+      guard let sid = sessionIdentifier(from: envelope.properties),
+            let status = decodeStatus(from: envelope.properties) else { return nil }
+      return .sessionStatusUpdated(sessionID: sid, status: status)
+
     case "session.deleted":
       guard let sid = envelope.properties?["sessionID"]?.stringValue,
             let info = decode(SessionInfo.self, envelope.properties?["info"]) else { return nil }
@@ -114,8 +120,43 @@ actor SSEEventParser {
       return .questionAnswered(questionID: qid, answer: answer)
 
     default:
+      if let statusEvent = parseSessionStateEvent(type: envelope.type, properties: envelope.properties) {
+        return statusEvent
+      }
       return .unknown(type: envelope.type, raw: envelope.properties ?? [:])
     }
+  }
+
+  private func parseSessionStateEvent(type: String, properties: [String: CodableValue]?) -> SSEEvent? {
+    guard type.hasPrefix("session."),
+          let sid = sessionIdentifier(from: properties) else {
+      return nil
+    }
+
+    let status = type.replacingOccurrences(of: "session.", with: "")
+    let supported = ["idle", "running", "thinking", "error", "retry"]
+    guard supported.contains(status) else {
+      return nil
+    }
+
+    return .sessionStatusUpdated(sessionID: sid, status: SessionStatusInfo(status: status, message: nil))
+  }
+
+  private func sessionIdentifier(from properties: [String: CodableValue]?) -> String? {
+    properties?["sessionID"]?.stringValue
+      ?? properties?["sessionId"]?.stringValue
+      ?? properties?["id"]?.stringValue
+  }
+
+  private func decodeStatus(from properties: [String: CodableValue]?) -> SessionStatusInfo? {
+    if let info = decode(SessionStatusInfo.self, properties?["info"]) {
+      return info
+    }
+    if let status = properties?["status"]?.stringValue {
+      let message = properties?["message"]?.stringValue
+      return SessionStatusInfo(status: status, message: message)
+    }
+    return nil
   }
 
   private func decode<T: Decodable>(_ type: T.Type, _ value: CodableValue?) -> T? {

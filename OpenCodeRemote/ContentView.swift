@@ -70,6 +70,20 @@ struct ConnectScreen: View {
           .padding(.horizontal, 32)
       }
 
+      if conn.status == .connecting || conn.connectionHint != nil {
+        HStack(spacing: 8) {
+          if conn.status == .connecting {
+            ProgressView()
+              .scaleEffect(0.85)
+          }
+          Text(conn.connectionHint ?? "连接前会自动等待网络恢复")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+      }
+
       // 连接按钮
       Button {
         Task {
@@ -331,17 +345,19 @@ struct ChatScreen: View {
               .foregroundColor(.secondary)
             Spacer()
             // Thinking Level 选择器
-            HStack(spacing: 4) {
-              Image(systemName: "brain.head.profile")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-              Picker("思考程度", selection: $store.reasoningEffort) {
-                Text("低").tag("low")
-                Text("中").tag("medium")
-                Text("高").tag("high")
+            if store.currentModelSupportsReasoning {
+              HStack(spacing: 4) {
+                Image(systemName: "brain.head.profile")
+                  .font(.caption2)
+                  .foregroundColor(.secondary)
+                Picker("思考程度", selection: $store.reasoningEffort) {
+                  Text("低").tag("low")
+                  Text("中").tag("medium")
+                  Text("高").tag("high")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 120)
               }
-              .pickerStyle(.segmented)
-              .frame(width: 120)
             }
             if store.isSelectedSessionRunning {
               Button { Task { await store.abort() } } label: {
@@ -360,22 +376,35 @@ struct ChatScreen: View {
             Image(systemName: "gearshape.fill")
               .font(.caption2)
               .foregroundColor(.secondary)
-            if !store.activeModel.isEmpty {
-              Text(store.activeModel)
+            Text(store.activeProviderDisplayName ?? "默认 Provider")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+              .lineLimit(1)
+            Text("/")
+              .font(.caption2)
+              .foregroundColor(.secondary)
+            Text(store.activeModelDisplayName)
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            } else {
-              Text("默认模型")
+            if store.currentModelSupportsReasoning {
+              Image(systemName: "brain.head.profile")
+                .font(.caption2)
+                .foregroundColor(.orange)
+            }
+            if store.currentModelSupportsAttachments {
+              Image(systemName: "paperclip")
+                .font(.caption2)
+                .foregroundColor(.blue)
+            }
+            if store.currentModelSupportsReasoning {
+              Text("·")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+              Text(store.reasoningEffort == "low" ? "低" : store.reasoningEffort == "high" ? "高" : "中")
                 .font(.caption2)
                 .foregroundColor(.secondary)
             }
-            Text("·")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-            Text(store.reasoningEffort == "low" ? "低" : store.reasoningEffort == "high" ? "高" : "中")
-              .font(.caption2)
-              .foregroundColor(.secondary)
             Image(systemName: "chevron.up")
               .font(.caption2)
               .foregroundColor(.secondary)
@@ -476,12 +505,20 @@ struct ChatScreen: View {
     switch status {
     case "running": return Image(systemName: "play.circle.fill").foregroundColor(.green)
     case "thinking": return Image(systemName: "brain.head.profile").foregroundColor(.orange)
+    case "error": return Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
+    case "retry": return Image(systemName: "arrow.clockwise.circle.fill").foregroundColor(.yellow)
     default: return Image(systemName: "circle").foregroundColor(.secondary)
     }
   }
 
   private func statusText(_ s: String) -> String {
-    switch s { case "running": "运行中"; case "thinking": "思考中"; default: "空闲" }
+    switch s {
+    case "running": "运行中"
+    case "thinking": "思考中"
+    case "error": "错误"
+    case "retry": "重试中"
+    default: "空闲"
+    }
   }
 }
 
@@ -749,54 +786,63 @@ struct ConfigSheet: View {
       Form {
         Section("模型") {
           if store.providers.isEmpty {
-            TextField("provider/model", text: $store.activeModel)
-              .keyboardType(.asciiCapable)
-            Text("无法获取模型列表，可手动输入")
-              .font(.caption2)
-              .foregroundColor(.secondary)
-          } else {
-            // Provider + Model 联动选择
-            if let provider = store.providers.first(where: { $0.id == store.activeModel.components(separatedBy: "/").first }) {
-              Picker("Provider", selection: Binding(
-                get: { store.activeModel.components(separatedBy: "/").first ?? "" },
-                set: { newProviderID in
-                  if let p = store.providers.first(where: { $0.id == newProviderID }) {
-                    let firstModel = p.models.keys.first ?? ""
-                    store.activeModel = "\(newProviderID)/\(firstModel)"
-                  }
-                }
-              )) {
-                ForEach(store.providers) { provider in
-                  Text(provider.name).tag(provider.id)
-                }
-              }
-
-              if let modelID = store.activeModel.components(separatedBy: "/").dropFirst().first {
-                Picker("模型", selection: Binding(
-                  get: { modelID },
-                  set: { newModel in
-                    let providerID = store.activeModel.components(separatedBy: "/").first ?? ""
-                    store.activeModel = "\(providerID)/\(newModel)"
-                  }
-                )) {
-                  ForEach(Array(provider.models.keys.sorted()), id: \.self) { key in
-                    let info = provider.models[key]
-                    Text(info?.name ?? key).tag(key)
-                  }
+            if let providerLoadError = store.providerLoadError {
+              VStack(alignment: .leading, spacing: 6) {
+                Text("模型列表加载失败")
+                  .font(.subheadline.weight(.medium))
+                Text(providerLoadError)
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+                Button("重新加载") {
+                  Task { await store.refreshProviderConfigurationIfNeeded(force: true) }
                 }
               }
             } else {
-              Picker("Provider", selection: Binding(
-                get: { store.providers.first?.id ?? "" },
-                set: { newProviderID in
-                  if let p = store.providers.first(where: { $0.id == newProviderID }) {
-                    let firstModel = p.models.keys.first ?? ""
-                    store.activeModel = "\(newProviderID)/\(firstModel)"
-                  }
-                }
+              HStack(spacing: 10) {
+                ProgressView()
+                Text("正在加载 Provider 与模型列表…")
+                  .font(.subheadline)
+              }
+            }
+          } else {
+            Picker("Provider", selection: Binding(
+              get: { store.selectedProviderID ?? store.providers.first?.id ?? "" },
+              set: { store.setActiveProvider($0) }
+            )) {
+              ForEach(store.providers) { provider in
+                Text(store.connectedProviderIDs.contains(provider.id) ? "\(provider.name) · 已连接" : provider.name)
+                  .tag(provider.id)
+              }
+            }
+
+            if let provider = store.selectedProvider {
+              Picker("模型", selection: Binding(
+                get: { store.selectedModelID ?? provider.sortedModels.first?.id ?? "" },
+                set: { store.setActiveModel(providerID: provider.id, modelID: $0) }
               )) {
-                ForEach(store.providers) { provider in
-                  Text(provider.name).tag(provider.id)
+                ForEach(provider.sortedModels, id: \.id) { model in
+                  Text(model.info.displayName).tag(model.id)
+                }
+              }
+
+              if let selectedModelInfo = store.selectedModelInfo, let selectedModelID = store.selectedModelID {
+                VStack(alignment: .leading, spacing: 4) {
+                  Text("当前模型: \(selectedModelID)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                  HStack(spacing: 10) {
+                    if let contextWindow = selectedModelInfo.contextWindow {
+                      Text("上下文 \(contextWindow)")
+                    }
+                    if selectedModelInfo.supportsReasoning {
+                      Text("支持推理")
+                    }
+                    if selectedModelInfo.supportsAttachments {
+                      Text("支持附件")
+                    }
+                  }
+                  .font(.caption2)
+                  .foregroundColor(.secondary)
                 }
               }
             }
@@ -809,14 +855,25 @@ struct ConfigSheet: View {
           }
         }
 
-        Section("思考程度") {
-          Picker("思考程度", selection: $store.reasoningEffort) {
-            Text("低").tag("low")
-            Text("中").tag("medium")
-            Text("高").tag("high")
+        if store.currentModelSupportsReasoning {
+          Section("思考程度") {
+            Picker("思考程度", selection: $store.reasoningEffort) {
+              Text("低").tag("low")
+              Text("中").tag("medium")
+              Text("高").tag("high")
+            }
+            .pickerStyle(.segmented)
           }
-          .pickerStyle(.segmented)
+        } else {
+          Section("思考程度") {
+            Label("当前模型不支持推理强度调整", systemImage: "info.circle")
+              .font(.caption)
+              .foregroundColor(.secondary)
+          }
         }
+      }
+      .task {
+        await store.refreshProviderConfigurationIfNeeded()
       }
       .navigationTitle("发送配置")
       .navigationBarTitleDisplayMode(.inline)

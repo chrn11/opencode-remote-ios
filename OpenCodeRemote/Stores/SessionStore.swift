@@ -35,7 +35,10 @@ final class SessionStore: ObservableObject {
 
   // 可用 Provider/Model 列表（从服务器获取）
   @Published var providers: [ProviderInfo] = []
+  @Published var providerDefaults: [String: String] = [:]
+  @Published var connectedProviderIDs = Set<String>()
   @Published var globalConfig: GlobalConfig?
+  @Published var providerLoadError: String?
 
   private let apiClient: OpenCodeAPIClient
   private let eventStreamClient: EventStreamClient
@@ -60,6 +63,8 @@ final class SessionStore: ObservableObject {
 
   func refreshSessions(search: String? = nil) async {
     isLoading = true; error = nil
+    defer { isLoading = false }
+
     do {
       let fetched = try await apiClient.fetchSessions(limit: nil)
       if let search, !search.isEmpty {
@@ -71,23 +76,41 @@ final class SessionStore: ObservableObject {
         sessions = fetched
       }
       let status = try await apiClient.fetchSessionStatus()
-      sessionStatus = status
-
-      // 加载可用 Provider/Model 列表
-      if providers.isEmpty {
-        providers = try await apiClient.fetchProviders()
-      }
-      if globalConfig == nil {
-        globalConfig = try await apiClient.fetchGlobalConfig()
-        // 如果用户未手动设置模型，使用服务器默认
-        if activeModel.isEmpty, let defaultModel = globalConfig?.model {
-          activeModel = defaultModel
-        }
-      }
+      sessionStatus = status.mapValues { SessionStatusInfo(status: $0.normalizedStatus, message: $0.message) }
     } catch {
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }
-    isLoading = false
+
+    await refreshProviderConfigurationIfNeeded()
+  }
+
+  func refreshProviderConfigurationIfNeeded(force: Bool = false) async {
+    guard force || providers.isEmpty || globalConfig == nil else {
+      normalizeActiveSelections()
+      return
+    }
+
+    do {
+      async let providerResponse = apiClient.fetchProviders()
+      async let configResponse = apiClient.fetchGlobalConfig()
+
+      let (catalog, config) = try await (providerResponse, configResponse)
+      providers = catalog.all.sorted { lhs, rhs in
+        let lhsConnected = catalog.connected.contains(lhs.id)
+        let rhsConnected = catalog.connected.contains(rhs.id)
+        if lhsConnected != rhsConnected {
+          return lhsConnected && !rhsConnected
+        }
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+      }
+      providerDefaults = catalog.defaultModels
+      connectedProviderIDs = Set(catalog.connected)
+      globalConfig = config
+      providerLoadError = nil
+      normalizeActiveSelections()
+    } catch {
+      providerLoadError = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
+    }
   }
 
   func selectSession(_ id: SessionID) async {
@@ -127,14 +150,16 @@ final class SessionStore: ObservableObject {
     error = nil
     do {
       let requestID = UUID().uuidString
+      updateSessionStatus(sessionID: sid, status: "running")
       try await apiClient.sendPromptAsync(
         sessionId: sid, text: text, requestId: requestID,
-        reasoningEffort: reasoningEffort,
+        reasoningEffort: currentModelSupportsReasoning ? reasoningEffort : nil,
         agent: activeAgent.isEmpty ? nil : activeAgent,
         model: activeModel.isEmpty ? nil : activeModel,
         variant: activeVariant.isEmpty ? nil : activeVariant
       )
     } catch {
+      updateSessionStatus(sessionID: sid, status: "error")
       self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
     }
   }
@@ -148,7 +173,10 @@ final class SessionStore: ObservableObject {
   func abort() async {
     guard let sid = selectedSession?.id else { error = "未选择会话"; return }
     error = nil
-    do { _ = try await apiClient.abort(sessionId: sid) }
+    do {
+      _ = try await apiClient.abort(sessionId: sid)
+      updateSessionStatus(sessionID: sid, status: "idle")
+    }
     catch { self.error = (error as? NetworkError)?.errorDescription ?? error.localizedDescription }
   }
 
@@ -252,14 +280,21 @@ final class SessionStore: ObservableObject {
 
     case .sessionCreated(let id, let info):
       sessions.insert(info, at: 0)
+      if sessionStatus[id] == nil {
+        sessionStatus[id] = SessionStatusInfo(status: "idle")
+      }
       recordSeenKey("sess-created-\(id)")
 
     case .sessionUpdated(let id, let info):
       if let idx = sessions.firstIndex(where: { $0.id == id }) { sessions[idx] = info }
       recordSeenKey("sess-updated-\(id)")
 
+    case .sessionStatusUpdated(let id, let status):
+      updateSessionStatus(sessionID: id, status: status.normalizedStatus, message: status.message)
+
     case .sessionDeleted(let id, _):
       sessions.removeAll { $0.id == id }
+      sessionStatus.removeValue(forKey: id)
 
     case .messageUpdated(_, let info):
       if let idx = messages.firstIndex(where: { $0.id == info.id }) {
@@ -320,14 +355,134 @@ final class SessionStore: ObservableObject {
 }
 
 extension SessionStore {
+  var selectedProviderID: String? {
+    activeModel.split(separator: "/", maxSplits: 1).first.map(String.init)
+  }
+
+  var selectedModelID: String? {
+    let components = activeModel.split(separator: "/", maxSplits: 1).map(String.init)
+    guard components.count == 2 else { return nil }
+    return components[1]
+  }
+
+  var selectedProvider: ProviderInfo? {
+    guard let selectedProviderID else { return nil }
+    return providers.first(where: { $0.id == selectedProviderID })
+  }
+
+  var selectedModelInfo: ModelInfo? {
+    guard let selectedProvider, let selectedModelID else { return nil }
+    return selectedProvider.models[selectedModelID]
+  }
+
+  var currentModelSupportsReasoning: Bool {
+    if selectedModelInfo?.supportsReasoning == true {
+      return true
+    }
+
+    let normalized = activeModel.lowercased()
+    return normalized.contains("/o1")
+      || normalized.contains("/o3")
+      || normalized.contains("/o4")
+      || normalized.contains("deepseek-r1")
+      || normalized.contains("reasoner")
+      || normalized.contains("qwq")
+  }
+
+  var currentModelSupportsAttachments: Bool {
+    selectedModelInfo?.supportsAttachments == true
+  }
+
+  var activeModelDisplayName: String {
+    guard let selectedModelInfo else {
+      return activeModel.isEmpty ? "默认模型" : activeModel
+    }
+    return selectedModelInfo.displayName
+  }
+
+  var activeProviderDisplayName: String? {
+    selectedProvider?.name
+  }
+
+  func setActiveProvider(_ providerID: String) {
+    guard let provider = providers.first(where: { $0.id == providerID }) else { return }
+    let preferredModelID = preferredModelID(for: provider)
+      ?? provider.sortedModels.first?.id
+    if let preferredModelID {
+      setActiveModel(providerID: providerID, modelID: preferredModelID)
+    }
+  }
+
+  func setActiveModel(providerID: String, modelID: String) {
+    activeModel = "\(providerID)/\(modelID)"
+    if !currentModelSupportsReasoning {
+      reasoningEffort = "medium"
+    }
+  }
+
   /// 会话状态摘要
   func statusForSession(_ id: SessionID) -> String {
-    sessionStatus[id]?.status ?? "idle"
+    sessionStatus[id]?.normalizedStatus ?? "idle"
   }
 
   var isSelectedSessionRunning: Bool {
     guard let sid = selectedSession?.id else { return false }
-    let st = sessionStatus[sid]?.status ?? "idle"
-    return st == "running" || st == "thinking"
+    let st = sessionStatus[sid]?.normalizedStatus ?? "idle"
+    return st == "running" || st == "thinking" || st == "retry"
+  }
+
+  private func normalizeActiveSelections() {
+    if activeModel.isEmpty, let defaultModel = globalConfig?.model, isValidModelIdentifier(defaultModel) {
+      activeModel = defaultModel
+    }
+
+    if activeModel.isEmpty || !isValidModelIdentifier(activeModel) {
+      activeModel = firstAvailableModelIdentifier() ?? activeModel
+    }
+
+    if let providerID = selectedProviderID, let modelID = selectedModelID,
+       providers.first(where: { $0.id == providerID })?.models[modelID] == nil {
+      setActiveProvider(providerID)
+    }
+
+    if !currentModelSupportsReasoning {
+      reasoningEffort = "medium"
+    }
+  }
+
+  private func isValidModelIdentifier(_ identifier: String) -> Bool {
+    let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
+    guard parts.count == 2 else { return false }
+    return providers.first(where: { $0.id == parts[0] })?.models[parts[1]] != nil
+  }
+
+  private func preferredModelID(for provider: ProviderInfo) -> String? {
+    if let modelID = providerDefaults[provider.id], provider.models[modelID] != nil {
+      return modelID
+    }
+    if let globalModel = globalConfig?.model {
+      let parts = globalModel.split(separator: "/", maxSplits: 1).map(String.init)
+      if parts.count == 2, parts[0] == provider.id, provider.models[parts[1]] != nil {
+        return parts[1]
+      }
+    }
+    return nil
+  }
+
+  private func firstAvailableModelIdentifier() -> String? {
+    for provider in providers {
+      if let preferred = preferredModelID(for: provider) {
+        return "\(provider.id)/\(preferred)"
+      }
+      if let first = provider.sortedModels.first?.id {
+        return "\(provider.id)/\(first)"
+      }
+    }
+    return nil
+  }
+
+  private func updateSessionStatus(sessionID: SessionID, status: String, message: String? = nil) {
+    let info = SessionStatusInfo(status: status, message: message)
+    sessionStatus[sessionID] = SessionStatusInfo(status: info.normalizedStatus, message: message)
   }
 }

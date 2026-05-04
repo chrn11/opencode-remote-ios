@@ -8,11 +8,14 @@ import SwiftUI
 /// 服务器连接配置和状态
 @MainActor
 final class ConnectionStore: ObservableObject {
+  static let timeoutSeconds = Int(OpenCodeAPIClient.requestTimeout)
+
   @Published var serverURL: String = ""
   @Published var authToken: String = ""
   @Published var status: ConnectionStatus = .disconnected
   @Published var lastError: String?
   @Published var serverInfo: HealthInfo?
+  @Published var connectionHint: String?
 
   struct HealthInfo {
     let version: String
@@ -56,12 +59,14 @@ final class ConnectionStore: ObservableObject {
 
     status = .connecting
     lastError = nil
+    connectionHint = "正在尝试连接服务器，超时阈值为 \(Self.timeoutSeconds) 秒"
 
     do {
       await apiClient.configure(baseURL: url, authToken: authToken)
       let health = try await apiClient.healthCheck()
       status = .connected
       serverURL = urlString
+      connectionHint = nil
 
       serverInfo = HealthInfo(version: health.version, url: urlString)
       UserDefaults.standard.set(urlString, forKey: defaultsKey)
@@ -69,7 +74,13 @@ final class ConnectionStore: ObservableObject {
       return true
     } catch {
       status = .error
-      lastError = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
+      if let networkError = error as? NetworkError, case .timeout = networkError {
+        lastError = "连接超时（\(Self.timeoutSeconds) 秒），请检查服务器地址、Tailscale/局域网连通性，或稍后重试"
+        connectionHint = "连接请求已超时，你可以确认服务器在线后重新连接"
+      } else {
+        lastError = (error as? NetworkError)?.errorDescription ?? error.localizedDescription
+        connectionHint = nil
+      }
       return false
     }
   }
@@ -77,6 +88,7 @@ final class ConnectionStore: ObservableObject {
   func disconnect() {
     status = .disconnected
     serverInfo = nil
+    connectionHint = nil
   }
 
   func clear() {
@@ -85,6 +97,7 @@ final class ConnectionStore: ObservableObject {
     serverURL = ""
     authToken = ""
     lastError = nil
+    connectionHint = nil
     UserDefaults.standard.removeObject(forKey: defaultsKey)
   }
 }
