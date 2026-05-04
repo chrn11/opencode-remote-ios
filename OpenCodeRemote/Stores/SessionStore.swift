@@ -149,10 +149,9 @@ final class SessionStore: ObservableObject {
     guard let sid = selectedSession?.id else { error = "未选择会话"; return }
     error = nil
     do {
-      let requestID = UUID().uuidString
       updateSessionStatus(sessionID: sid, status: "running")
       try await apiClient.sendPromptAsync(
-        sessionId: sid, text: text, requestId: requestID,
+        sessionId: sid, text: text,
         reasoningEffort: currentModelSupportsReasoning ? reasoningEffort : nil,
         agent: activeAgent.isEmpty ? nil : activeAgent,
         model: activeModel.isEmpty ? nil : activeModel,

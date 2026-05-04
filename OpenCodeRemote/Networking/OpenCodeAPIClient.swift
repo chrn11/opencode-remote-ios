@@ -227,9 +227,9 @@ actor OpenCodeAPIClient {
   }
 
   /// 异步发送 Prompt，服务端返回 204
-  /// 使用 parts 数组格式对齐真实 OpenCode API
+  /// 对齐 OpenCode PromptPayload schema：model 为对象 { providerID, modelID }
   func sendPromptAsync(
-    sessionId: String, text: String, requestId: String,
+    sessionId: String, text: String,
     reasoningEffort: String? = nil,
     agent: String? = nil,
     model: String? = nil,
@@ -237,8 +237,7 @@ actor OpenCodeAPIClient {
   ) async throws {
     let parts: [[String: String]] = [["type": "text", "text": text]]
     var body: [String: CodableValue] = [
-      "parts": CodableValue.array(parts.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) }),
-      "request_id": CodableValue.string(requestId)
+      "parts": CodableValue.array(parts.map { CodableValue.object($0.mapValues { CodableValue.string($0) }) })
     ]
     if let reasoningEffort {
       body["reasoning_effort"] = CodableValue.string(reasoningEffort)
@@ -246,8 +245,15 @@ actor OpenCodeAPIClient {
     if let agent, !agent.isEmpty {
       body["agent"] = CodableValue.string(agent)
     }
+    // model: 如果格式为 "providerID/modelID"，拆分为对象
     if let model, !model.isEmpty {
-      body["model"] = CodableValue.string(model)
+      let comps = model.split(separator: "/", maxSplits: 1).map(String.init)
+      if comps.count == 2 {
+        body["model"] = CodableValue.object([
+          "providerID": CodableValue.string(comps[0]),
+          "modelID": CodableValue.string(comps[1])
+        ])
+      }
     }
     if let variant, !variant.isEmpty {
       body["variant"] = CodableValue.string(variant)
