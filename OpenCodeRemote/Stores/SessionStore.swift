@@ -376,17 +376,21 @@ extension SessionStore {
   }
 
   var currentModelSupportsReasoning: Bool {
+    // 1. 服务器显式标记支持推理
     if selectedModelInfo?.supportsReasoning == true {
       return true
     }
-
     let normalized = activeModel.lowercased()
-    return normalized.contains("/o1")
-      || normalized.contains("/o3")
-      || normalized.contains("/o4")
-      || normalized.contains("deepseek-r1")
-      || normalized.contains("reasoner")
-      || normalized.contains("qwq")
+    // 2. 排除已知不支持推理的模型类型
+    if normalized.contains("embed") || normalized.contains("whisper") || normalized.contains("tts") {
+      return false
+    }
+    // 3. 模型名包含推理相关关键词
+    if normalized.contains("reasoning") || normalized.contains("thinking") || normalized.contains("r1") {
+      return true
+    }
+    // 4. 兜底：大多数聊天模型默认支持 reasoning_effort 参数
+    return !normalized.isEmpty
   }
 
   var currentModelSupportsAttachments: Bool {

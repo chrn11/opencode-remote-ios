@@ -336,6 +336,26 @@ struct ChatScreen: View {
 
       // 底部输入区
       VStack(spacing: 6) {
+        // 错误提示
+        if let error = store.error {
+          HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.red)
+              .font(.caption)
+            Text(error)
+              .font(.caption)
+              .foregroundColor(.red)
+              .lineLimit(2)
+            Spacer()
+            Button { store.error = nil } label: {
+              Image(systemName: "xmark.circle.fill")
+                .foregroundColor(.red.opacity(0.6))
+                .font(.caption)
+            }
+          }
+          .padding(.horizontal, 16)
+        }
+
         // 状态行
         if let session = store.selectedSession {
           HStack(spacing: 6) {
