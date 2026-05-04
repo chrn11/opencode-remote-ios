@@ -520,50 +520,9 @@ struct ChatScreen: View {
     }
     .toolbar {
       ToolbarItem(placement: .principal) {
-        VStack(spacing: 2) {
-          Text(store.selectedSession?.title ?? "会话")
-            .font(.headline)
-            .lineLimit(1)
-          // 优先从最后一条消息读取 agent/model；无消息时 fallback 到当前配置
-          let agentText: String? = {
-            if let last = store.messages.last, let agent = last.agentName, !agent.isEmpty {
-              return agent
-            }
-            if !store.activeAgent.isEmpty { return store.activeAgent }
-            return nil
-          }()
-          let modelText: String? = {
-            if let last = store.messages.last, let model = last.modelDisplay, !model.isEmpty {
-              return model
-            }
-            if !store.activeModel.isEmpty { return store.activeModel }
-            return nil
-          }()
-          if let agent = agentText, let model = modelText {
-            HStack(spacing: 4) {
-              Text(agent)
-                .font(.caption2)
-                .fontWeight(.medium)
-                .foregroundColor(.accentColor)
-              Text("·")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-              Text(model)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-              if let variant = store.messages.last?.variantName {
-                Text("·")
-                  .font(.caption2)
-                  .foregroundColor(.secondary)
-                Text(variant)
-                  .font(.caption2)
-                  .foregroundColor(.secondary)
-                  .italic()
-              }
-            }
-          }
-        }
+        Text(store.selectedSession?.title ?? "会话")
+          .font(.headline)
+          .lineLimit(1)
       }
     }
     .onDisappear {
